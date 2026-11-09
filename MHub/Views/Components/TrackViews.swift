@@ -96,6 +96,8 @@ struct TrackMenuItems: View {
     @Environment(LibraryStore.self) private var library
     var tracks: [Track]
     var playlistID: String?
+    /// The full player adds lyric sharing and the display settings.
+    var inPlayer = false
 
     var body: some View {
         Button(Strings.playNext, systemImage: "text.line.first.and.arrowtriangle.forward") { player.playNext(tracks) }
@@ -103,11 +105,20 @@ struct TrackMenuItems: View {
         Button(Strings.addToPlaylist, systemImage: "text.badge.plus") {
             app.pendingPlaylistTracks = PendingTracks(tracks: tracks)
         }
+        if tracks.count == 1, let track = tracks.first {
+            Button(Strings.download, systemImage: "arrow.down.circle") { app.downloads.download(track) }
+        }
         if tracks.count == 1, let track = tracks.first, let server = app.settings.serverURL,
            let url = Links.shareURL(for: track, server: server) {
             ShareLink(item: url, subject: Text(track.title), message: Text("\(track.title) - \(track.artist)")) {
                 Label(Strings.share, systemImage: "square.and.arrow.up")
             }
+        }
+        if inPlayer, let track = tracks.first {
+            if player.lyrics.isSynced {
+                Button(Strings.shareLyricsMenu, systemImage: "quote.bubble") { app.lyricShare = LyricShareRequest(track: track) }
+            }
+            Button(Strings.displaySettingsMenu, systemImage: "textformat.size") { app.showsDisplaySettings = true }
         }
         if let playlistID {
             Divider()

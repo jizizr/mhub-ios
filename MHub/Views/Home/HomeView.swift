@@ -46,7 +46,6 @@ struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(PlayerController.self) private var player
     @State private var model = HomeModel()
-    @State private var showsSettings = false
 
     var body: some View {
         NavigationStack {
@@ -81,12 +80,11 @@ struct HomeView: View {
                         Task { await model.load(client: app.client, refresh: true) }
                     }
                     .disabled(model.loading)
-                    Button(Strings.settings, systemImage: "person.crop.circle") { showsSettings = true }
+                    SettingsToolbarButton()
                 }
             }
             .refreshable { await model.load(client: app.client, refresh: true) }
             .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
-            .sheet(isPresented: $showsSettings) { SettingsView() }
         }
         .task(id: app.settings.serverAddress) {
             if model.home == nil { await model.load(client: app.client) }

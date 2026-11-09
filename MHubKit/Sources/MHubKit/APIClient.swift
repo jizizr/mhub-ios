@@ -5,6 +5,8 @@ public enum APIError: LocalizedError, Equatable {
     case http(status: Int, detail: String)
     case playbackFailed(String)
     case timedOut
+    /// HTTP 429 that outlasted the caller's wait limit.
+    case rateLimited(retryAfterMs: Int, detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -12,6 +14,8 @@ public enum APIError: LocalizedError, Equatable {
         case let .http(status, detail): detail.isEmpty ? "HTTP \(status)" : detail
         case let .playbackFailed(message): message.isEmpty ? "播放准备失败" : message
         case .timedOut: "等待音频超时，请重试"
+        case let .rateLimited(retryAfterMs, detail):
+            "\(detail.isEmpty ? "请求过于频繁" : detail)（约 \(RateLimit.seconds(retryAfterMs)) 秒后可重试）"
         }
     }
 }
@@ -43,10 +47,35 @@ public enum PlaybackReadiness: Equatable, Sendable {
 public struct MHubClient: Sendable {
     public let server: URL
     let session: URLSession
+    /// Waits out a 429; tests replace it to record waits instead of sleeping.
+    let sleep: @Sendable (Int) async throws -> Void
+    /// The signed-in account's session; nil for guests.
+    public let account: SessionStore?
 
-    public init(server: URL, session: URLSession = .shared) {
+    public init(server: URL, session: URLSession = .shared, account: SessionStore? = nil) {
+        self.init(server: server, session: session, account: account) { try await Task.sleep(for: .milliseconds($0)) }
+    }
+
+    init(server: URL, session: URLSession, account: SessionStore? = nil, sleep: @escaping @Sendable (Int) async throws -> Void) {
         self.server = server
         self.session = session
+        self.account = account
+        self.sleep = sleep
+    }
+
+    public static let sessionCookie = "mhub_session"
+
+    /// The session token a `Set-Cookie` header carries: a value, "" when cleared, nil when absent.
+    public static func sessionToken(fromSetCookie header: String?) -> String? {
+        guard let header else { return nil }
+        // Several cookies may be folded into one header with commas; expiry dates contain commas too.
+        for part in header.components(separatedBy: "\(sessionCookie)=").dropFirst() {
+            let value = String(part.prefix { $0 != ";" && $0 != "," })
+            let attributes = part.lowercased()
+            if attributes.contains("max-age=0") { return "" }
+            return value
+        }
+        return nil
     }
 
     /// Parses a user-entered address; a missing scheme defaults to https.
@@ -107,8 +136,8 @@ public struct MHubClient: Sendable {
         return try await post("/api/v1/recommendations/continue", body: body)
     }
 
-    public func collection(platform: String, url: String) async throws -> Collection {
-        try await get("/api/v1/collections/resolve", ["platform": platform, "url": url], timeout: 60)
+    public func collection(platform: String, url: String, rateLimit: RateLimitPolicy = .standard) async throws -> Collection {
+        try await get("/api/v1/collections/resolve", ["platform": platform, "url": url], timeout: 60, rateLimit: rateLimit)
     }
 
     public func lyrics(for track: Track) async throws -> LyricsPayload {
@@ -120,11 +149,11 @@ public struct MHubClient: Sendable {
         return try await get("/api/v1/lyrics", query)
     }
 
-    public func createPlayback(_ track: Track, quality: Quality) async throws -> PlaybackTask {
+    public func createPlayback(_ track: Track, quality: Quality, rateLimit: RateLimitPolicy = .standard) async throws -> PlaybackTask {
         let response: CreatePlaybackResponse = try await post("/api/v1/playbacks", body: [
             "platform": track.platform, "query": track.title, "selected_id": track.sourceID,
             "quality": quality.rawValue, "include_cover": false,
-        ])
+        ], rateLimit: rateLimit)
         return response.playback
     }
 
@@ -137,11 +166,12 @@ public struct MHubClient: Sendable {
     }
 
     /// Creates the task and long-polls until the system player can open it.
-    public func preparePlayback(_ track: Track, quality: Quality, deadline: Duration = .seconds(180)) async throws
-        -> (task: PlaybackTask, url: URL) {
+    /// `rateLimit` covers creating the task; the deadline starts once it exists.
+    public func preparePlayback(_ track: Track, quality: Quality, rateLimit: RateLimitPolicy = .standard,
+                                deadline: Duration = .seconds(180)) async throws -> (task: PlaybackTask, url: URL) {
+        var task = try await createPlayback(track, quality: quality, rateLimit: rateLimit)
         let clock = ContinuousClock()
         let end = clock.now.advanced(by: deadline)
-        var task = try await createPlayback(track, quality: quality)
         while true {
             try Task.checkCancellation()
             switch PlaybackReadiness.evaluate(task, server: server) {
@@ -154,19 +184,105 @@ public struct MHubClient: Sendable {
         }
     }
 
+    // MARK: Account and library sync (docs/api-contract.md「账号与同步」)
+
+    /// This install as the server names it in the session list.
+    public struct Device: Sendable {
+        public var id: String
+        public var name: String
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+        func body(_ fields: [String: Any]) -> [String: Any] {
+            fields.merging(["device_id": id, "device_name": name]) { left, _ in left }
+        }
+    }
+
+    public func authConfig() async throws -> AuthConfig { try await get("/api/v1/auth/config") }
+
+    public func me() async throws -> AccountUser? {
+        let response: MeResponse = try await get("/api/v1/auth/me")
+        return response.user
+    }
+
+    public func login(username: String, password: String, device: Device) async throws -> LoginResponse {
+        try await post("/api/v1/auth/password/login", body: device.body(["username": username, "password": password]))
+    }
+
+    public func recoveryLogin(username: String, code: String, device: Device) async throws -> LoginResponse {
+        try await post("/api/v1/auth/recovery/login", body: device.body(["username": username, "code": code]))
+    }
+
+    public func register(username: String, password: String, device: Device) async throws -> LoginResponse {
+        try await post("/api/v1/auth/register", body: device.body(["username": username, "password": password]))
+    }
+
+    public func logout() async throws {
+        _ = try await data(path: "/api/v1/auth/logout", method: "POST", body: Data("{}".utf8), timeout: 15)
+        account?.token = nil
+    }
+
+    public func librarySnapshot() async throws -> LibrarySnapshot { try await get("/api/v1/sync/library/json") }
+
+    public func libraryOps(_ ops: [LibraryOp]) async throws -> LibrarySnapshot {
+        struct Body: Encodable { var ops: [LibraryOp] }
+        let payload = try JSONEncoder().encode(Body(ops: ops))
+        let response = try await data(path: "/api/v1/sync/library/json", method: "POST", body: payload, timeout: 30)
+        return try JSONDecoder().decode(LibrarySnapshot.self, from: response)
+    }
+
+    // MARK: Download
+
+    /// Creates the task at `quality` and waits until the whole file is ready (not just streamable).
+    public func completedPlayback(_ track: Track, quality: Quality, rateLimit: RateLimitPolicy,
+                                  deadline: Duration = .seconds(600)) async throws -> PlaybackTask {
+        var task = try await createPlayback(track, quality: quality, rateLimit: rateLimit)
+        let clock = ContinuousClock()
+        let end = clock.now.advanced(by: deadline)
+        while task.status != .completed {
+            try Task.checkCancellation()
+            if task.status == .failed { throw APIError.playbackFailed(task.error ?? "") }
+            guard clock.now < end else { throw APIError.timedOut }
+            task = try await playback(id: task.id, since: task.status.rawValue)
+        }
+        return task
+    }
+
+    /// The whole file of a completed task, with the account session.
+    public func audioRequest(for task: PlaybackTask) -> URLRequest? {
+        let path = "/api/v1/playbacks/" + (task.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? task.id) + "/audio"
+        guard let url = Self.resolve(path, against: server) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 120)
+        authorize(&request)
+        return request
+    }
+
+    /// Account requests carry the session cookie; writes also need the client header.
+    private func authorize(_ request: inout URLRequest) {
+        request.httpShouldHandleCookies = false
+        request.setValue("1", forHTTPHeaderField: "x-mhub-client")
+        if let token = account?.token, !token.isEmpty {
+            request.setValue("\(Self.sessionCookie)=\(token)", forHTTPHeaderField: "Cookie")
+        }
+    }
+
     // MARK: Transport
 
-    private func get<T: Decodable>(_ path: String, _ query: [String: String] = [:], timeout: Double = 20) async throws -> T {
-        try await JSONDecoder().decode(T.self, from: data(path: path, query: query, timeout: timeout))
+    private func get<T: Decodable>(_ path: String, _ query: [String: String] = [:], timeout: Double = 20,
+                                   rateLimit: RateLimitPolicy = .standard) async throws -> T {
+        try await JSONDecoder().decode(T.self, from: data(path: path, query: query, timeout: timeout, rateLimit: rateLimit))
     }
 
-    private func post<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+    private func post<T: Decodable>(_ path: String, body: [String: Any], rateLimit: RateLimitPolicy = .standard) async throws -> T {
         let payload = try JSONSerialization.data(withJSONObject: body)
-        return try await JSONDecoder().decode(T.self, from: data(path: path, method: "POST", body: payload, timeout: 30))
+        return try await JSONDecoder().decode(T.self, from: data(path: path, method: "POST", body: payload, timeout: 30,
+                                                                  rateLimit: rateLimit))
     }
 
+    /// One request; HTTP 429 is waited out and resent within `rateLimit`.
     private func data(path: String, query: [String: String] = [:], method: String = "GET",
-                      body: Data? = nil, timeout: Double) async throws -> Data {
+                      body: Data? = nil, timeout: Double, rateLimit: RateLimitPolicy = .standard) async throws -> Data {
         guard var components = URLComponents(string: server.absoluteString + path) else { throw APIError.invalidServer }
         if !query.isEmpty {
             components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -175,16 +291,29 @@ public struct MHubClient: Sendable {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        authorize(&request)
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        let (data, response) = try await session.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(status) else {
-            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
-            throw APIError.http(status: status, detail: detail ?? "")
+        let session = session
+        return try await RateLimit.run(rateLimit, sleep: sleep) {
+            let (data, response) = try await session.data(for: request)
+            let http = response as? HTTPURLResponse
+            // The server slides the session forward or clears it on logout.
+            if let token = Self.sessionToken(fromSetCookie: http?.value(forHTTPHeaderField: "Set-Cookie")) {
+                account?.token = token.isEmpty ? nil : token
+            }
+            let status = http?.statusCode ?? 0
+            guard (200..<300).contains(status) else {
+                let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String ?? ""
+                if status == 429 {
+                    throw APIError.rateLimited(retryAfterMs: RateLimit.retryAfterMs(http?.value(forHTTPHeaderField: "Retry-After")),
+                                               detail: detail)
+                }
+                throw APIError.http(status: status, detail: detail)
+            }
+            return data
         }
-        return data
     }
 }

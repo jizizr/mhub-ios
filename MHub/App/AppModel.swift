@@ -38,10 +38,13 @@ final class Settings {
     var appearance: Appearance { didSet { defaults.set(appearance.rawValue, forKey: "appearance") } }
     /// Audio cache limit in bytes.
     var cacheLimit: Int64 { didSet { defaults.set(cacheLimit, forKey: "cache_limit") } }
+    /// Check GitHub for a newer release at launch (at most daily).
+    var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto_update") } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        serverAddress = defaults.string(forKey: "server") ?? ""
+        // The public server unless the user set their own (docs/design.md「设置项」).
+        serverAddress = defaults.string(forKey: "server") ?? Self.defaultServer
         quality = Quality(rawValue: defaults.string(forKey: "quality") ?? "") ?? .high
         searchPlatform = defaults.string(forKey: "search_platform") ?? "applemusic"
         lyricScript = LyricScript(rawValue: defaults.string(forKey: "lyric_script") ?? "") ?? .original
@@ -53,9 +56,12 @@ final class Settings {
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         let limit = defaults.object(forKey: "cache_limit") as? Int64 ?? 0
         cacheLimit = limit > 0 ? limit : 2 << 30
+        autoUpdate = defaults.object(forKey: "auto_update") as? Bool ?? true
     }
 
     var serverURL: URL? { MHubClient.serverURL(from: serverAddress) }
+
+    static let defaultServer = "https://music.op.wiki"
 }
 
 /// App-wide state shared by every screen: server client, settings, the local
@@ -71,12 +77,25 @@ final class AppModel {
     var pendingPlaylistTracks: PendingTracks?
     /// The search field lives in the tab bar, so its text is app state.
     var searchQuery = ""
+    /// Settings, opened from the account button of every root page.
+    var showsSettings = false
+    /// The player's「歌词与外观」sheet.
+    var showsDisplaySettings = false
+    /// The player's lyric sharing sheet, with a long-pressed line preselected.
+    var lyricShare: LyricShareRequest?
     private var toastID = 0
 
-    var client: MHubClient? { settings.serverURL.map { MHubClient(server: $0) } }
+    @ObservationIgnored private(set) var account: AccountManager!
+    @ObservationIgnored private(set) var updates: UpdateManager!
+    @ObservationIgnored private(set) var downloads: SongDownloads!
+
+    var client: MHubClient? { settings.serverURL.map { MHubClient(server: $0, account: account?.session) } }
 
     init() {
         recent = Self.loadRecent()
+        account = AccountManager(library: library) { [weak self] in self?.client }
+        updates = UpdateManager(settings: settings)
+        downloads = SongDownloads(app: self)
     }
 
     func show(_ message: String) {
@@ -118,6 +137,9 @@ final class AppModel {
 final class LibraryStore {
     private(set) var playlists: [Playlist] = []
     private let file: URL
+    /// While an account is linked, every edit is also handed over as library
+    /// operations for upload (docs/design.md「账号与歌单同步」).
+    @ObservationIgnored var recorder: (([LibraryOp]) -> Void)?
 
     init() {
         let folder = URL.applicationSupportDirectory
@@ -156,6 +178,17 @@ final class LibraryStore {
 
     func playlist(_ id: String) -> Playlist? { playlists.first { $0.id == id } }
 
+    /// Replace everything, e.g. with the account's library.
+    func replaceAll(_ list: [Playlist]) {
+        guard list != playlists else { return }
+        playlists = list
+        save()
+    }
+
+    private func record(_ ops: [LibraryOp]) {
+        if !ops.isEmpty { recorder?(ops) }
+    }
+
     @discardableResult
     func create(name: String, tracks: [Track] = [], sourceURL: String = "", sourcePlatform: String = "") -> Playlist {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -163,37 +196,46 @@ final class LibraryStore {
                                 sourceURL: sourceURL, sourcePlatform: sourcePlatform)
         playlists.insert(playlist, at: 0)
         save()
+        record([.create(id: playlist.id, name: playlist.name, sourceURL: sourceURL, sourcePlatform: sourcePlatform,
+                        tracks: playlist.tracks.map(SyncTrack.init))])
         return playlist
     }
 
     func rename(_ id: String, to name: String) {
-        update(id) { $0.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? $0.name : name }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        update(id) { $0.name = LibrarySync.cleanName(name) }
+        record([.rename(id: id, name: name)])
     }
 
     func delete(_ id: String) {
         playlists.removeAll { $0.id == id }
         save()
+        record([.delete(id: id)])
     }
 
     /// Returns how many songs were new to the playlist.
     @discardableResult
     func add(_ tracks: [Track], to id: String) -> Int {
-        var added = 0
+        var new: [Track] = []
         update(id) { playlist in
             let known = Set(playlist.tracks.map(\.id))
-            let new = tracks.map(\.chosen).uniqued().filter { !known.contains($0.id) }
+            new = tracks.map(\.chosen).uniqued().filter { !known.contains($0.id) }
             playlist.tracks.append(contentsOf: new)
-            added = new.count
         }
-        return added
+        if !new.isEmpty { record([.append(id: id, tracks: new.map(SyncTrack.init))]) }
+        return new.count
     }
 
     func remove(trackIDs: Set<String>, from id: String) {
         update(id) { $0.tracks.removeAll { trackIDs.contains($0.id) } }
+        record(trackIDs.sorted().map { .remove(id: id, key: $0) })
     }
 
     func move(in id: String, from source: IndexSet, to destination: Int) {
+        guard let before = playlist(id)?.tracks.map(\.id) else { return }
         update(id) { $0.tracks.move(fromOffsets: source, toOffset: destination) }
+        let after = playlist(id)?.tracks.map(\.id) ?? before
+        record(LibrarySync.reorderMoves(from: before, to: after).map { .move(id: id, key: $0.key, after: $0.after) })
     }
 
     private func update(_ id: String, _ change: (inout Playlist) -> Void) {
@@ -202,4 +244,11 @@ final class LibraryStore {
         playlists[at].updatedAt = .now
         save()
     }
+}
+
+/// Open lyric sharing for a song, optionally with one line chosen.
+struct LyricShareRequest: Identifiable {
+    let id = UUID()
+    var track: Track
+    var line: Int?
 }

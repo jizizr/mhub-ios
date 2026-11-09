@@ -48,6 +48,8 @@ final class PlayerController {
     private var wantsPlay = false
     private var loadTask: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
+    /// Identifies the running prefetch, so a cancelled one never clears its successor.
+    private var prefetchSerial = 0
     private var lyricsTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
     private var autoplayTask: Task<Int, Never>?
@@ -247,7 +249,15 @@ final class PlayerController {
         persistSoon()
         loadTask = Task {
             do {
-                let (item, entry) = try await makeItem(for: track, quality: quality)
+                // A song the listener asked for waits out the server's quota and
+                // plays when allowed; it never fails over to the next song.
+                let policy = RateLimitPolicy.playback { ms in
+                    Task { @MainActor [weak self] in
+                        guard let self, generation == self.generation else { return }
+                        app.show(Strings.playbackRateLimited(RateLimit.seconds(ms)))
+                    }
+                }
+                let (item, entry) = try await makeItem(for: track, quality: quality, rateLimit: policy)
                 guard generation == self.generation else { entry.loader?.cancel(); return }
                 entries[ObjectIdentifier(item)] = entry
                 currentItem = item
@@ -274,13 +284,13 @@ final class PlayerController {
 
     /// A cached file plays directly; otherwise the server prepares the song
     /// and `CachingAssetLoader` streams and caches it in one pass.
-    private func makeItem(for track: Track, quality: Quality) async throws -> (AVPlayerItem, Entry) {
+    private func makeItem(for track: Track, quality: Quality, rateLimit: RateLimitPolicy) async throws -> (AVPlayerItem, Entry) {
         let key = track.cacheKey(quality)
         if let file = await cache.file(for: key) {
             return (AVPlayerItem(url: file), Entry(track: track, quality: quality, loader: nil, cached: true))
         }
         guard let client = app.client else { throw APIError.invalidServer }
-        let (task, url) = try await client.preparePlayback(track, quality: quality)
+        let (task, url) = try await client.preparePlayback(track, quality: quality, rateLimit: rateLimit)
         try Task.checkCancellation()
         let enriched = track.enriched(by: task, server: client.server)
         if enriched != track {
@@ -322,17 +332,39 @@ final class PlayerController {
         let track = queue.items[nextIndex]
         let quality = app.settings.quality
         let generation = generation
+        prefetchSerial += 1
+        let serial = prefetchSerial
         prefetchTask = Task {
-            defer { prefetchTask = nil }
-            guard let (next, entry) = try? await makeItem(for: track, quality: quality) else { return }
-            guard generation == self.generation, currentItem === item,
-                  queue.naturalNextIndex.map({ queue.items[$0].id }) == track.id else {
-                entry.loader?.cancel()
-                return
+            defer { if serial == prefetchSerial { prefetchTask = nil } }
+            let stillNext = { [unowned self] in
+                generation == self.generation && currentItem === item
+                    && queue.naturalNextIndex.map({ queue.items[$0].id }) == track.id
             }
-            entries[ObjectIdentifier(next)] = entry
-            prefetched = (track.id, next)
-            if player.canInsert(next, after: item) { player.insert(next, after: item) }
+            var attempt = 0
+            while !Task.isCancelled {
+                do {
+                    // Over quota a prefetch gives up at once, silently.
+                    let (next, entry) = try await makeItem(for: track, quality: quality, rateLimit: .prefetch)
+                    guard stillNext() else {
+                        entry.loader?.cancel()
+                        return
+                    }
+                    entries[ObjectIdentifier(next)] = entry
+                    prefetched = (track.id, next)
+                    if player.canInsert(next, after: item) { player.insert(next, after: item) }
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // Retry with backoff, never sooner than the server's Retry-After.
+                    var retryAfter = 0
+                    if case let APIError.rateLimited(ms, _) = error { retryAfter = ms }
+                    let delay = RateLimit.prefetchDelayMs(attempt: attempt, retryAfterMs: retryAfter)
+                    attempt += 1
+                    try? await Task.sleep(for: .milliseconds(delay))
+                    guard stillNext() else { return }
+                }
+            }
         }
     }
 

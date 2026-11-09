@@ -61,6 +61,8 @@ enum Strings {
     static func nowPlayingAlready(_ title: String) -> String { "\(title) 正在播放" }
     static func addedToPlaylist(_ name: String, _ count: Int) -> String { count > 0 ? "已添加到「\(name)」" : "歌曲已在「\(name)」中" }
     static func imported(_ name: String, _ count: Int) -> String { "已导入「\(name)」，共 \(count) 首" }
+    static func playbackRateLimited(_ seconds: Int) -> String { "切歌太频繁，\(seconds) 秒后自动播放" }
+    static func importRateLimited(_ seconds: Int) -> String { "服务器繁忙，\(seconds) 秒后继续导入…" }
     static let noMoreRecommendations = "暂时没有更多新歌曲，可以重试"
     static let autoplayUnavailable = "自动续播暂时不可用，点击重试"
     static let autoplayUnsupported = "这个音乐来源暂不支持自动续播"
@@ -108,4 +110,51 @@ enum Strings {
     static let sourceCode = "源代码"
     static let licenses = "开源许可"
     static let licenseText = "MHub 以 AGPL-3.0-only 发布。通过各平台获取的音乐、封面和歌词，版权归权利人所有。"
+    // Account and library sync
+    static let account = "账号"
+    static let signIn = "登录"
+    static let register = "注册"
+    static let recoverySignIn = "用恢复码登录"
+    static let signOut = "退出登录"
+    static let signOutMessage = "本机保留当前歌单，之后的修改不再同步。"
+    static func signOutPending(_ count: Int) -> String { "还有 \(count) 项修改未同步，退出后会丢失。" }
+    static let syncNow = "立即同步"
+    static let syncing = "同步中…"
+    static let synced = "已同步"
+    static let syncOffline = "离线"
+    static func syncPending(_ count: Int) -> String { "待上传 \(count) 项" }
+    static func syncFailed(_ message: String) -> String { "同步失败：\(message)" }
+    static let accountFooter = "登录后歌单与网页版和其他设备同步。"
+    static let accountLinkedFooter = "歌单的修改会自动上传，打开 App 时取回其他设备的修改。"
+    static let registerFooter = "用户名 3–32 位字母、数字或 _ - .，密码至少 8 位。注册后会显示恢复码，忘记密码时用它登录。"
+    static let username = "用户名"
+    static let password = "密码"
+    static let confirmPassword = "确认密码"
+    static let recoveryCode = "恢复码"
+    static let passwordMismatch = "两次输入的密码不一致"
+    static let recoveryCodesTitle = "保存恢复码"
+    static let recoveryCodesMessage = "每个恢复码只能用一次，忘记密码时用来登录。它们只显示这一次。"
+    static let copy = "复制"
+    // Updates
+    static let autoUpdate = "自动检查更新"
+    static let checkUpdate = "检查更新"
+    static let checkingUpdate = "正在检查…"
+    static let upToDate = "已是最新版本"
+    static let updateCheckFailed = "检查更新失败，请稍后再试"
+    static func updateAvailable(_ version: String) -> String { "发现新版本 \(version)" }
+    static let later = "以后"
+    // Download
+    static let download = "下载"
+    static func downloading(_ title: String) -> String { "正在下载《\(title)》…" }
+    static func downloadInProgress(_ title: String) -> String { "《\(title)》正在下载" }
+    static func downloadSaved(_ title: String) -> String { "《\(title)》已保存到「文件 › MHub」" }
+    static func downloadFailed(_ message: String) -> String { "下载失败：\(message)" }
+    static func serverBusyWait(_ seconds: Int) -> String { "服务器繁忙，\(seconds) 秒后继续…" }
+    // Lyrics sharing and display settings
+    static let shareLyrics = "分享歌词"
+    static let shareLyricsMenu = "分享歌词…"
+    static func shareLyricsHint(_ count: Int) -> String { "选择要分享的歌词，最多 \(count) 行" }
+    static let shareLyricsEmpty = "选择下面的歌词"
+    static let displaySettings = "歌词与外观"
+    static let displaySettingsMenu = "歌词与外观…"
 }

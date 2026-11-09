@@ -11,6 +11,7 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    MHUB_VERSION: ""
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -34,6 +35,11 @@ targets:
         CFBundleLocalizations: [zh-Hans]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # The full tag version (0.1.0-beta.2) for update checks; empty in local builds.
+        MHubVersion: $(MHUB_VERSION)
+        # Downloads land in Documents, shown in Files under「我的 iPhone › MHub」.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         LSApplicationCategoryType: public.app-category.music
         UIBackgroundModes: [audio]
         UILaunchScreen: {}

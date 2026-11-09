@@ -7,6 +7,7 @@ struct NowPlayingView: View {
     enum Pane { case artwork, lyrics, queue }
 
     @Environment(PlayerController.self) private var player
+    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var pane: Pane = .artwork
     @Namespace private var artworkSpace
@@ -39,6 +40,9 @@ struct NowPlayingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // A background never changes the layout size, however large the image.
         .background { PlayerBackground(artwork: player.artwork, palette: player.palette) }
+        // Sheets opened from the player's「…」menu and from a long-pressed lyric line.
+        .sheet(item: Bindable(app).lyricShare) { LyricsShareView(request: $0) }
+        .sheet(isPresented: Bindable(app).showsDisplaySettings) { DisplaySettingsView() }
         .environment(\.colorScheme, .dark)
         .statusBarHidden(false)
     }
@@ -62,7 +66,7 @@ struct NowPlayingView: View {
             Spacer()
             if let track = player.current {
                 Menu {
-                    TrackMenuItems(tracks: [track])
+                    TrackMenuItems(tracks: [track], inPlayer: true)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.body.weight(.bold))
@@ -84,6 +88,16 @@ struct NowPlayingView: View {
                 Text(player.current?.artist ?? "").font(.subheadline).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
             }
             Spacer()
+            if let track = player.current {
+                Menu {
+                    TrackMenuItems(tracks: [track], inPlayer: true)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.bold))
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+            }
         }
         .padding(.vertical, 18)
         .onTapGesture { withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { pane = .artwork } }

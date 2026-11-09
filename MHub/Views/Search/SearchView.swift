@@ -30,6 +30,7 @@ struct SearchView: View {
             }
             .listStyle(.plain)
             .navigationTitle(Strings.search)
+            .toolbar { SettingsToolbarButton() }
             .searchable(text: Bindable(app).searchQuery, placement: .navigationBarDrawer(displayMode: .always),
                         prompt: Strings.searchPrompt)
             .task(id: "\(app.settings.searchPlatform)|\(app.searchQuery)") { await search() }

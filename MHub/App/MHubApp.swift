@@ -37,6 +37,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var app
     @Environment(PlayerController.self) private var player
     @State private var tab: AppTab = .home
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var playerTransition
 
     var body: some View {
@@ -63,10 +64,20 @@ struct RootView: View {
                 .sheet(item: $app.pendingPlaylistTracks) { pending in
                     AddToPlaylistSheet(tracks: pending.tracks)
                 }
+                .sheet(isPresented: $app.showsSettings) { SettingsView() }
+                .modifier(UpdateAlert())
             }
         }
         .overlay(alignment: .top) { ToastView() }
-        .task(id: app.settings.serverAddress) { await app.refreshPlatforms() }
+        .task(id: app.settings.serverAddress) {
+            await app.refreshPlatforms()
+            await app.account.refresh()
+        }
+        .task { await app.updates.checkAutomatically() }
+        .onChange(of: scenePhase) { _, phase in
+            // Back in the foreground: upload queued library edits and take the account's library.
+            if phase == .active { Task { await app.account.refresh() } }
+        }
         .onChange(of: app.settings.cacheLimit) { _, limit in
             Task { await AudioCache.shared.setLimit(limit) }
         }

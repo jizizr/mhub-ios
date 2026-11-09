@@ -86,6 +86,11 @@ struct LyricsPane: View {
                         player.seek(to: Double(line.start) / 1000)
                         endBrowsing()
                     }
+                    // Long-pressing a line opens lyric sharing with that line chosen.
+                    .onLongPressGesture {
+                        guard !line.isBackground, let track = player.current else { return }
+                        app.lyricShare = LyricShareRequest(track: track, line: line.id)
+                    }
                     // Every line follows the focus with its own slightly later spring.
                     .offset(y: scroll + manualOffset + dragOffset)
                     .animation(

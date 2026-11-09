@@ -47,6 +47,7 @@ struct LibraryView: View {
                 } label: {
                     Label(Strings.newPlaylist, systemImage: "plus")
                 }
+                SettingsToolbarButton()
             }
             .alert(Strings.newPlaylist, isPresented: $creating) {
                 TextField(Strings.playlistName, text: $name)
@@ -132,8 +133,10 @@ struct ImportPlaylistView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var link = ""
-    @State private var working = false
+    @State private var working: Task<Void, Never>?
     @State private var error: String?
+    /// While the server's quota is used up: when the import resumes.
+    @State private var resumesAt: Date?
 
     var body: some View {
         NavigationStack {
@@ -144,8 +147,16 @@ struct ImportPlaylistView: View {
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                 } footer: {
-                    Text(error ?? Strings.importUnsupported)
-                        .foregroundStyle(error == nil ? Color.secondary : Color.red)
+                    if let resumesAt {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let ms = Int(resumesAt.timeIntervalSince(context.date) * 1000)
+                            Text(Strings.importRateLimited(RateLimit.seconds(max(ms, 0))))
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text(error ?? Strings.importUnsupported)
+                            .foregroundStyle(error == nil ? Color.secondary : Color.red)
+                    }
                 }
             }
             .navigationTitle(Strings.importPlaylist)
@@ -155,10 +166,10 @@ struct ImportPlaylistView: View {
                     Button(Strings.cancel, systemImage: "xmark") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if working {
+                    if working != nil {
                         ProgressView()
                     } else {
-                        Button(Strings.importButton, systemImage: "checkmark") { Task { await importLink() } }
+                        Button(Strings.importButton, systemImage: "checkmark") { working = Task { await importLink() } }
                             .disabled(Links.collectionPlatform(for: link) == nil)
                     }
                 }
@@ -166,20 +177,29 @@ struct ImportPlaylistView: View {
             .onAppear {
                 if let pasted = UIPasteboard.general.string, Links.collectionPlatform(for: pasted) != nil { link = pasted }
             }
+            // Closing the sheet stops the import and any wait for the quota.
+            .onDisappear { working?.cancel() }
         }
         .presentationDetents([.medium])
     }
 
     private func importLink() async {
         guard let platform = Links.collectionPlatform(for: link), let client = app.client else { return }
-        working = true
-        defer { working = false }
+        error = nil
+        defer { working = nil; resumesAt = nil }
+        // An import is background work: it waits out the quota and shows the wait.
+        let policy = RateLimitPolicy.importing { ms in
+            Task { @MainActor in resumesAt = .now.addingTimeInterval(Double(ms) / 1000) }
+        }
         do {
-            let collection = try await client.collection(platform: platform, url: link.trimmingCharacters(in: .whitespacesAndNewlines))
+            let collection = try await client.collection(platform: platform, url: link.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                         rateLimit: policy)
+            resumesAt = nil
             let playlist = library.create(name: collection.title, tracks: collection.items.map(\.track),
                                           sourceURL: collection.sourceURL, sourcePlatform: collection.platform)
             app.show(Strings.imported(playlist.name, playlist.tracks.count))
             dismiss()
+        } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
         }

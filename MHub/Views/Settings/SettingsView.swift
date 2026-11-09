@@ -16,6 +16,7 @@ struct SettingsView: View {
         @Bindable var settings = app.settings
         NavigationStack {
             Form {
+                AccountSection()
                 Section {
                     TextField(Strings.serverPlaceholder, text: $address)
                         .textInputAutocapitalization(.never)
@@ -50,27 +51,8 @@ struct SettingsView: View {
                     }
                 }
 
-                Section {
-                    Picker(Strings.lyricWordMode, selection: $settings.lyricWordMode) {
-                        ForEach(LyricWordMode.allCases) { Text($0.label).tag($0) }
-                    }
-                    Picker(Strings.lyricScript, selection: $settings.lyricScript) {
-                        ForEach(LyricScript.allCases) { Text($0.label).tag($0) }
-                    }
-                    Toggle(Strings.showTranslation, isOn: $settings.showTranslation)
-                    Toggle(Strings.showRoman, isOn: $settings.showRoman)
-                } header: {
-                    Text(Strings.lyrics)
-                } footer: {
-                    Text(Strings.lyricWordModeFooter)
-                }
-
-                Section(Strings.appearance) {
-                    Picker(Strings.appearance, selection: $settings.appearance) {
-                        ForEach(Appearance.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                }
+                LyricsSettingsSection()
+                AppearanceSection()
 
                 Section(Strings.storage) {
                     LabeledContent(Strings.cacheUsage, value: cacheSize.byteText)
@@ -80,7 +62,12 @@ struct SettingsView: View {
                 }
 
                 Section(Strings.about) {
-                    LabeledContent(Strings.version, value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                    LabeledContent(Strings.version, value: UpdateManager.currentVersion)
+                    Toggle(Strings.autoUpdate, isOn: $settings.autoUpdate)
+                    Button(app.updates.checking ? Strings.checkingUpdate : Strings.checkUpdate) {
+                        Task { if let message = await app.updates.checkNow() { app.show(message) } }
+                    }
+                    .disabled(app.updates.checking)
                     Link(Strings.sourceCode, destination: URL(string: "https://github.com/jizizr/mhub")!)
                     Text(Strings.licenseText).font(.footnote).foregroundStyle(.secondary)
                 }
