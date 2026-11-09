@@ -36,8 +36,9 @@ jobs:
         run: |
           mkdir -p build/Payload
           cp -R build/MHub.xcarchive/Products/Applications/MHub.app build/Payload/
-          (cd build && zip -qry "MHub-$VERSION-unsigned.ipa" Payload)
-          shasum -a 256 "build/MHub-$VERSION-unsigned.ipa" | tee "build/MHub-$VERSION-unsigned.ipa.sha256"
+          cd build
+          zip -qry "MHub-$VERSION-unsigned.ipa" Payload
+          shasum -a 256 "MHub-$VERSION-unsigned.ipa" | tee "MHub-$VERSION-unsigned.ipa.sha256"
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
