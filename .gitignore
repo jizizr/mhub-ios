@@ -1,0 +1,8 @@
+/MHub.xcodeproj/
+/MHubKit/.build/
+/MHubKit/.swiftpm/
+/build/
+*.ipa
+.DS_Store
+._*
+xcuserdata/

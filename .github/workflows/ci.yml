@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version
+      - name: MHubKit tests (shared contract)
+        run: swift test --package-path MHubKit
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Build app (simulator)
+        run: >
+          xcodebuild -project MHub.xcodeproj -scheme MHub
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO build -quiet
+
+  shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: contract/ and docs/ match mhub-android
+        run: scripts/check-shared.sh

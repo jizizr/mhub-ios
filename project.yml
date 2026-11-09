@@ -1,0 +1,63 @@
+# XcodeGen spec. The .xcodeproj is generated (and git-ignored):
+#   xcodegen generate
+name: MHub
+options:
+  bundleIdPrefix: io.github.mhub
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+packages:
+  MHubKit:
+    path: MHubKit
+targets:
+  MHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: MHub
+    dependencies:
+      - package: MHubKit
+    info:
+      path: MHub/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: MHub
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleLocalizations: [zh-Hans]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.music
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        "UISupportedInterfaceOrientations~ipad":
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+           UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # Self-hosted servers may be plain HTTP on a LAN.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: 连接局域网中的 MHub 服务器
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mhub.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  MHub:
+    build:
+      targets:
+        MHub: all
+    test:
+      targets: []
