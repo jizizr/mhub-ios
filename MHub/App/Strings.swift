@@ -171,4 +171,5 @@ enum Strings {
     static func casualListening(_ mood: String) -> String { "随便听 · \(mood)" }
     static let madeForYou = "为你生成"
     static let unknownArtist = "未知艺人"
+    static func unplayableSkipped(_ title: String) -> String { "《\(title)》暂时无法播放，已跳过" }
 }

@@ -53,6 +53,9 @@ import Testing
         guard case .ready = PlaybackReadiness.evaluate(done, server: server) else { Issue.record("not ready"); return }
         let failed = try Fixtures.decode(PlaybackTask.self, "playback-failed.json")
         #expect(PlaybackReadiness.evaluate(failed, server: server) == .failed("该歌曲需要付费"))
+        // No source can ever play it: players skip it instead of retrying.
+        let unplayable = try Fixtures.decode(PlaybackTask.self, "playback-unplayable.json")
+        #expect(PlaybackReadiness.evaluate(unplayable, server: server) == .unplayable("Apple Music 暂无可用音源"))
     }
 
     @Test func serverAddressParsing() {

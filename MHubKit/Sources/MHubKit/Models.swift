@@ -205,6 +205,8 @@ public struct PlaybackTask: Decodable, Sendable, Equatable {
     public var bitrate: Int?
     public var byteSize: Int?
     public var error: String?
+    /// `unplayable`: no source can ever play this song; players skip it.
+    public var errorCode: String?
     public var audioURL: String
     /// Present only while a progressive stream can serve Range requests.
     public var streamLength: Int?
@@ -214,6 +216,7 @@ public struct PlaybackTask: Decodable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, status, platform, quality, title, artist, album, duration, format, bitrate, error
         case mediaRevision = "media_revision"
+        case errorCode = "error_code"
         case contentType = "content_type"
         case byteSize = "byte_size"
         case audioURL = "audio_url"

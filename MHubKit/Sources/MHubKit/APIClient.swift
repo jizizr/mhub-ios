@@ -4,6 +4,8 @@ public enum APIError: LocalizedError, Equatable {
     case invalidServer
     case http(status: Int, detail: String)
     case playbackFailed(String)
+    /// No source can ever play the song (server code `unplayable`): skip it, never retry.
+    case unplayable(String)
     case timedOut
     /// HTTP 429 that outlasted the caller's wait limit.
     case rateLimited(retryAfterMs: Int, detail: String)
@@ -13,6 +15,7 @@ public enum APIError: LocalizedError, Equatable {
         case .invalidServer: "服务器地址无效"
         case let .http(status, detail): detail.isEmpty ? "HTTP \(status)" : detail
         case let .playbackFailed(message): message.isEmpty ? "播放准备失败" : message
+        case let .unplayable(message): message.isEmpty ? "暂时无法播放" : message
         case .timedOut: "等待音频超时，请重试"
         case let .rateLimited(retryAfterMs, detail):
             "\(detail.isEmpty ? "请求过于频繁" : detail)（约 \(RateLimit.seconds(retryAfterMs)) 秒后可重试）"
@@ -26,11 +29,15 @@ public enum PlaybackReadiness: Equatable, Sendable {
     case ready(URL)
     case wait(since: String)
     case failed(String)
+    /// No source can ever play it (`error_code: unplayable`).
+    case unplayable(String)
+
+    public static let unplayableCode = "unplayable"
 
     public static func evaluate(_ task: PlaybackTask, server: URL) -> PlaybackReadiness {
         switch task.status {
         case .failed:
-            return .failed(task.error ?? "")
+            return task.errorCode == unplayableCode ? .unplayable(task.error ?? "") : .failed(task.error ?? "")
         case .completed:
             guard let url = MHubClient.resolve(task.audioURL, against: server) else { return .failed("音频地址无效") }
             return .ready(url)
@@ -177,6 +184,7 @@ public struct MHubClient: Sendable {
             switch PlaybackReadiness.evaluate(task, server: server) {
             case let .ready(url): return (task, url)
             case let .failed(message): throw APIError.playbackFailed(message)
+            case let .unplayable(message): throw APIError.unplayable(message)
             case let .wait(since):
                 guard clock.now < end else { throw APIError.timedOut }
                 task = try await playback(id: task.id, since: since)
@@ -242,7 +250,9 @@ public struct MHubClient: Sendable {
         let end = clock.now.advanced(by: deadline)
         while task.status != .completed {
             try Task.checkCancellation()
-            if task.status == .failed { throw APIError.playbackFailed(task.error ?? "") }
+            if task.status == .failed {
+                throw task.errorCode == PlaybackReadiness.unplayableCode ? APIError.unplayable(task.error ?? "") : APIError.playbackFailed(task.error ?? "")
+            }
             guard clock.now < end else { throw APIError.timedOut }
             task = try await playback(id: task.id, since: task.status.rawValue)
         }
@@ -306,7 +316,9 @@ public struct MHubClient: Sendable {
             }
             let status = http?.statusCode ?? 0
             guard (200..<300).contains(status) else {
-                let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String ?? ""
+                let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let detail = payload?["detail"] as? String ?? ""
+                if payload?["code"] as? String == PlaybackReadiness.unplayableCode { throw APIError.unplayable(detail) }
                 if status == 429 {
                     throw APIError.rateLimited(retryAfterMs: RateLimit.retryAfterMs(http?.value(forHTTPHeaderField: "Retry-After")),
                                                detail: detail)

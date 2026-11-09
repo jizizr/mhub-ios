@@ -1,5 +1,6 @@
 import AVFoundation
 import MediaPlayer
+import Network
 import MHubKit
 import Observation
 import SwiftUI
@@ -76,8 +77,21 @@ final class PlayerController {
         var cached: Bool
     }
 
+    /// Songs the server reported as unplayable, for this run (web `unplayableTracks`).
+    @ObservationIgnored private var unplayable = Set<String>()
+    @ObservationIgnored private var consecutiveFailures = 0
+    private static let maxConsecutiveFailures = 5
+    /// Low Data Mode: no next-song download (web: `saveData`).
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var savingData = false
+
     init(app: AppModel) {
         self.app = app
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let constrained = path.isConstrained
+            Task { @MainActor in self?.savingData = constrained }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "mhub.path"))
         player.automaticallyWaitsToMinimizeStalling = true
         // Automated tests run silently (`MHUB_MUTE=1` in the launch environment).
         player.isMuted = ProcessInfo.processInfo.environment["MHUB_MUTE"] == "1"
@@ -283,6 +297,12 @@ final class PlayerController {
                 }
                 trackBecameCurrent(entry)
             } catch is CancellationError {
+            } catch APIError.unplayable {
+                guard generation == self.generation else { return }
+                // Nothing can play this song: move on as if it were not queued.
+                unplayable.insert(track.id)
+                app.show(Strings.unplayableSkipped(track.title))
+                skipOnFailure()
             } catch {
                 guard generation == self.generation else { return }
                 let message = error.localizedDescription
@@ -290,6 +310,31 @@ final class PlayerController {
                 app.show(message)
             }
         }
+    }
+
+    /// Steps past a song that cannot play; after five in a row (or the whole queue) it stops.
+    private func skipOnFailure() {
+        consecutiveFailures += 1
+        if consecutiveFailures >= Self.maxConsecutiveFailures || consecutiveFailures >= queue.items.count {
+            consecutiveFailures = 0
+            wantsPlay = false
+            phase = .paused
+            updateNowPlaying()
+            return
+        }
+        advance(manual: true)
+    }
+
+    /// The song a natural end leads to, stepping over songs known to be unplayable.
+    private func playableNextIndex() -> Int? {
+        guard queue.repeatMode != .one else { return nil }
+        var probe = queue
+        for _ in queue.items.indices {
+            guard let next = probe.naturalNextIndex, next != queue.index else { return nil }
+            if !unplayable.contains(queue.items[next].id) { return next }
+            probe.select(next)
+        }
+        return nil
     }
 
     /// A cached file plays directly; otherwise the server prepares the song
@@ -316,6 +361,7 @@ final class PlayerController {
     }
 
     private func trackBecameCurrent(_ entry: Entry) {
+        consecutiveFailures = 0
         app.recordRecent(entry.track)
         if entry.track.isRecommendation { autoplayPlayed.append(entry.track.sourceID) }
         updateNowPlaying()
@@ -324,11 +370,14 @@ final class PlayerController {
         if entry.cached { schedulePrefetch() }
     }
 
+    /// The prefetched song usually finishes caching while it is still queued:
+    /// remember that, so once it plays the song after it is prefetched in turn
+    /// (otherwise the next hand-off falls back to a cold load and a silent gap).
     private func didCache(_ key: String) {
-        if let item = currentItem, let entry = entries[ObjectIdentifier(item)], entry.track.cacheKey(entry.quality) == key {
-            entries[ObjectIdentifier(item)]?.cached = true
-            schedulePrefetch()
+        for (id, entry) in entries where entry.track.cacheKey(entry.quality) == key {
+            entries[id]?.cached = true
         }
+        if let item = currentItem, entries[ObjectIdentifier(item)]?.cached == true { schedulePrefetch() }
     }
 
     // MARK: Next song
@@ -336,9 +385,8 @@ final class PlayerController {
     /// The next song is resolved only after the current one is fully cached,
     /// then queued in AVQueuePlayer so the system plays it without a gap.
     private func schedulePrefetch() {
-        guard prefetched == nil, prefetchTask == nil, queue.repeatMode != .one,
-              let nextIndex = queue.naturalNextIndex, nextIndex != queue.index,
-              let item = currentItem else { return }
+        guard prefetched == nil, prefetchTask == nil, !savingData,
+              let nextIndex = playableNextIndex(), let item = currentItem else { return }
         let track = queue.items[nextIndex]
         let quality = app.settings.quality
         let generation = generation
@@ -348,7 +396,7 @@ final class PlayerController {
             defer { if serial == prefetchSerial { prefetchTask = nil } }
             let stillNext = { [unowned self] in
                 generation == self.generation && currentItem === item
-                    && queue.naturalNextIndex.map({ queue.items[$0].id }) == track.id
+                    && playableNextIndex().map({ queue.items[$0].id }) == track.id
             }
             var attempt = 0
             while !Task.isCancelled {
@@ -364,6 +412,14 @@ final class PlayerController {
                     if player.canInsert(next, after: item) { player.insert(next, after: item) }
                     return
                 } catch is CancellationError {
+                    return
+                } catch APIError.unplayable {
+                    // The queue now steps over it; warm the song after it instead.
+                    unplayable.insert(track.id)
+                    guard generation == self.generation, currentItem === item else { return }
+                    prefetchSerial += 1
+                    prefetchTask = nil
+                    schedulePrefetch()
                     return
                 } catch {
                     // Retry with backoff, never sooner than the server's Retry-After.
@@ -390,7 +446,7 @@ final class PlayerController {
     /// After a queue edit the prefetched song may no longer be next.
     private func queueChanged() {
         persistSoon()
-        let nextID = queue.repeatMode == .one ? nil : queue.naturalNextIndex.map { queue.items[$0].id }
+        let nextID = playableNextIndex().map { queue.items[$0].id }
         if let prefetched, prefetched.trackID != nextID { dropPrefetched() }
         if let item = currentItem, entries[ObjectIdentifier(item)]?.cached == true { schedulePrefetch() }
         Task { _ = await fetchRecommendations(force: false) }
@@ -418,7 +474,13 @@ final class PlayerController {
     }
 
     private func advance(manual: Bool) {
-        switch queue.next(manual: manual) {
+        var step = queue.next(manual: manual)
+        // Songs already known to be unplayable are stepped over like absent ones.
+        for _ in queue.items.indices {
+            guard case .index = step, let current = queue.current, unplayable.contains(current.id) else { break }
+            step = queue.next(manual: true)
+        }
+        switch step {
         case .index:
             load()
         case .ended:
