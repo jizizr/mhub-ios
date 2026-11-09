@@ -48,7 +48,7 @@ struct HomeView: View {
     @State private var model = HomeModel()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: Bindable(app).homePath) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
                     if let home = model.home {
@@ -140,7 +140,11 @@ struct HomeView: View {
     private func songs(_ tracks: [Track]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: Strings.recommendedSongs) {
-                Button(Strings.play, systemImage: "play.fill") { player.play(tracks) }
+                Button(Strings.play, systemImage: "play.fill") {
+                    let tag = model.home?.tags.first { $0.id == model.selectedTag }
+                    player.play(tracks, source: QueueSource(type: QueueSource.recommendation,
+                                                            name: Strings.casualListening(tag?.label ?? Strings.madeForYou)))
+                }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.glass)
             }
@@ -225,7 +229,9 @@ struct CollectionView: View {
                     if let collection {
                         Text(String(format: Strings.songsCount, collection.items.count))
                             .font(.subheadline).foregroundStyle(.secondary)
-                        PlayShuffleButtons(tracks: collection.items.map(\.track))
+                        PlayShuffleButtons(tracks: collection.items.map(\.track),
+                                           source: QueueSource(type: QueueSource.collection, name: collection.title, id: route.url,
+                                                               platform: route.platform, url: route.url, cover: route.cover))
                     }
                 }
                 .frame(maxWidth: .infinity)

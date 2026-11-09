@@ -3,12 +3,13 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(AppModel.self) private var app
     @State private var creating = false
     @State private var importing = false
     @State private var name = ""
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: Bindable(app).libraryPath) {
             List {
                 Section {
                     NavigationLink {
@@ -78,7 +79,8 @@ struct PlaylistDetailView: View {
                         Text(playlist.name).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(String(format: Strings.songsCount, playlist.tracks.count))
                             .font(.subheadline).foregroundStyle(.secondary)
-                        PlayShuffleButtons(tracks: playlist.tracks)
+                        PlayShuffleButtons(tracks: playlist.tracks,
+                                           source: QueueSource(type: QueueSource.playlist, name: playlist.name, id: playlist.id))
                     }
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)

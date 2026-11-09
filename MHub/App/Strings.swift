@@ -157,4 +157,18 @@ enum Strings {
     static let shareLyricsEmpty = "选择下面的歌词"
     static let displaySettings = "歌词与外观"
     static let displaySettingsMenu = "歌词与外观…"
+    // Play queue (web QueuePanel)
+    static func queueCount(_ count: Int) -> String { "\(count) 首音乐" }
+    static func sourcePlaylist(_ name: String) -> String { "来自歌单：\(name)" }
+    static func sourceRecommendation(_ name: String) -> String { "来自推荐：\(name)" }
+    static let clearQueueConfirm = "清空当前播放队列？正在播放的歌曲也会停止。"
+    static let clear = "清空"
+    static let autoplayLoadingNotice = "正在挑选接下来听的歌曲…"
+    static let autoplayEmpty = "暂时没有更多新歌曲，可以重试"
+    static let autoplayRecommended = " · ∞ 推荐"
+    static let queueEmpty = "队列是空的"
+    static let queueEmptyHint = "在搜索结果或歌单中点「添加到播放队列」来添加音乐"
+    static func casualListening(_ mood: String) -> String { "随便听 · \(mood)" }
+    static let madeForYou = "为你生成"
+    static let unknownArtist = "未知艺人"
 }

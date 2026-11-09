@@ -29,7 +29,11 @@ final class PlayerController {
     private(set) var lyricsState: LyricsState = .idle
     private(set) var artwork: UIImage?
     private(set) var palette: [Color] = []
-    private(set) var autoplayLoading = false
+    /// The last AutoPlay request, for the queue's notice (web `autoplayState`).
+    enum AutoplayStatus { case idle, loading, ready, empty, unsupported, error }
+    private(set) var autoplayStatus: AutoplayStatus = .idle
+    /// Where the queue came from (docs/design.md「播放队列」).
+    private(set) var source: QueueSource?
     var showsFullPlayer = false
 
     var current: Track? { queue.current }
@@ -99,9 +103,10 @@ final class PlayerController {
     }
 
     /// "播放" / "随机播放" on a list: replaces the queue.
-    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool? = nil) {
+    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool? = nil, source: QueueSource? = nil) {
         guard !tracks.isEmpty else { return }
         queue.replace(with: tracks, startAt: index, shuffle: shuffle)
+        self.source = source
         resetAutoplayStation()
         load()
     }
@@ -142,6 +147,8 @@ final class PlayerController {
 
     func clearQueue() {
         queue.clear()
+        source = nil
+        autoplayStatus = .idle
         stop()
     }
 
@@ -219,8 +226,11 @@ final class PlayerController {
         queue.setAutoplay(enabled)
         resetAutoplayStation()
         queueChanged()
-        if enabled { Task { _ = await fetchRecommendations(force: false) } }
+        if enabled { Task { _ = await fetchRecommendations(force: false) } } else { autoplayStatus = .idle }
     }
+
+    /// The queue notice's「重试」.
+    func retryAutoplay() { Task { _ = await fetchRecommendations(force: true) } }
 
     // MARK: Loading
 
@@ -461,7 +471,7 @@ final class PlayerController {
     private func fetchRecommendations(force: Bool) async -> Int {
         guard queue.autoplay, let seed = current, let client = app.client else { return 0 }
         guard PlatformInfo.autoplayPlatforms.contains(seed.platform) else {
-            if force { app.show(Strings.autoplayUnsupported) }
+            autoplayStatus = .unsupported
             return 0
         }
         guard force || queue.upcoming.count <= 2 else { return 0 }
@@ -469,7 +479,7 @@ final class PlayerController {
         let exclude = queue.items.filter { $0.platform == seed.platform }.map(\.sourceID) + autoplayPlayed.suffix(200)
         let seeds = queue.autoplaySeeds()
         let station = autoplayStation
-        autoplayLoading = true
+        autoplayStatus = .loading
         let task = Task<Int, Never> { [weak self] in
             guard let result = try? await client.continuation(platform: seed.platform, seedID: seed.sourceID, seedIDs: seeds,
                                                               station: station, exclude: exclude) else { return -1 }
@@ -482,8 +492,7 @@ final class PlayerController {
         autoplayTask = task
         let added = await task.value
         autoplayTask = nil
-        autoplayLoading = false
-        if added < 0 && force { app.show(Strings.autoplayUnavailable) }
+        autoplayStatus = added < 0 ? .error : added > 0 ? .ready : queue.autoplay ? .empty : .idle
         return max(added, 0)
     }
 
@@ -649,6 +658,7 @@ final class PlayerController {
     private struct Saved: Codable {
         var queue: PlayQueue
         var position: Double
+        var source: QueueSource?
     }
 
     private static var stateFile: URL { URL.applicationSupportDirectory.appendingPathComponent("playback.json") }
@@ -657,6 +667,7 @@ final class PlayerController {
         guard let data = try? Data(contentsOf: Self.stateFile),
               let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
         queue = saved.queue
+        source = saved.source
         restorePosition = saved.position
         elapsed = saved.position
         duration = Double(queue.current?.durationMs ?? 0) / 1000
@@ -675,7 +686,7 @@ final class PlayerController {
     }
 
     private func persistNow() {
-        let saved = Saved(queue: queue, position: elapsed)
+        let saved = Saved(queue: queue, position: elapsed, source: source)
         guard let data = try? JSONEncoder().encode(saved) else { return }
         try? FileManager.default.createDirectory(at: URL.applicationSupportDirectory, withIntermediateDirectories: true)
         try? data.write(to: Self.stateFile, options: .atomic)

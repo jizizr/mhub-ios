@@ -79,6 +79,11 @@ final class AppModel {
     var searchQuery = ""
     /// Settings, opened from the account button of every root page.
     var showsSettings = false
+    /// The selected tab and the home and library stacks, so the queue's source
+    /// link can open a playlist from the player.
+    var tab: AppTab = .home
+    var homePath = NavigationPath()
+    var libraryPath = NavigationPath()
     /// The player's「歌词与外观」sheet.
     var showsDisplaySettings = false
     /// The player's lyric sharing sheet, with a long-pressed line preselected.

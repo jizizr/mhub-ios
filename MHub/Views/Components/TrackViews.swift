@@ -213,16 +213,18 @@ struct PlaylistRow: View {
 struct PlayShuffleButtons: View {
     @Environment(PlayerController.self) private var player
     var tracks: [Track]
+    /// Shown above the queue as「来自歌单」.
+    var source: QueueSource?
 
     var body: some View {
         HStack(spacing: 14) {
             Button {
-                player.play(tracks, shuffle: false)
+                player.play(tracks, shuffle: false, source: source)
             } label: {
                 Label(Strings.play, systemImage: "play.fill").frame(maxWidth: .infinity)
             }
             Button {
-                player.play(tracks, shuffle: true)
+                player.play(tracks, shuffle: true, source: source)
             } label: {
                 Label(Strings.shuffle, systemImage: "shuffle").frame(maxWidth: .infinity)
             }

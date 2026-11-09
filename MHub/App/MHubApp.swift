@@ -36,7 +36,6 @@ struct PendingTracks: Identifiable {
 struct RootView: View {
     @Environment(AppModel.self) private var app
     @Environment(PlayerController.self) private var player
-    @State private var tab: AppTab = .home
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var playerTransition
 
@@ -47,7 +46,7 @@ struct RootView: View {
             if app.settings.serverURL == nil {
                 ServerSetupView()
             } else {
-                TabView(selection: $tab) {
+                TabView(selection: $app.tab) {
                     Tab(Strings.home, systemImage: "house.fill", value: AppTab.home) { HomeView() }
                     Tab(Strings.library, systemImage: "square.stack.fill", value: AppTab.library) { LibraryView() }
                     Tab(Strings.search, systemImage: "magnifyingglass", value: AppTab.search, role: .search) { SearchView() }

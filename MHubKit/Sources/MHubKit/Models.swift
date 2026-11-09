@@ -289,6 +289,33 @@ public struct LyricsPayload: Codable, Sendable {
 }
 
 /// A local playlist. The JSON shape is shared with the Android app.
+/// Where the queue came from, shown above it like the web `sourcePlaylist`:
+/// `playlist` (local, `id`), `collection` (an album or platform playlist,
+/// reopened from `platform` and `url`) or `recommendation`.
+public struct QueueSource: Codable, Hashable, Sendable {
+    public static let playlist = "playlist"
+    public static let collection = "collection"
+    public static let recommendation = "recommendation"
+
+    public var type: String
+    public var name: String
+    public var id: String
+    public var platform: String
+    public var url: String
+    public var cover: String
+
+    public init(type: String, name: String, id: String = "", platform: String = "", url: String = "", cover: String = "") {
+        self.type = type
+        self.name = name
+        self.id = id
+        self.platform = platform
+        self.url = url
+        self.cover = cover
+    }
+
+    public var isRecommendation: Bool { type == Self.recommendation }
+}
+
 public struct Playlist: Codable, Hashable, Sendable, Identifiable {
     public var id: String
     public var name: String
