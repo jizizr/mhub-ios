@@ -45,12 +45,14 @@ jobs:
         run: |
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
-          cat > build/notes.md <<NOTES
-          MHub iOS $VERSION。需要 iOS 26 及自托管的 [MHub](https://github.com/jizizr/mhub) 服务端。
+          # What changed comes first: the app's update prompt shows the first lines.
+          if [ -f "release-notes/${VERSION}.md" ]; then cat "release-notes/${VERSION}.md"; echo; fi > build/notes.md
+          cat >> build/notes.md <<NOTES
+          MHub iOS ${VERSION}。需要 iOS 26；默认连接公共服务器 https://music.op.wiki，也可在设置里改为自托管的 [MHub](https://github.com/jizizr/mhub) 服务端。
 
           **未签名 IPA**：用 AltStore、SideStore、Sideloadly 或 TrollStore 以你自己的 Apple ID 签名后安装。免费 Apple ID 签名 7 天后需重新签名。
 
-          首次启动填写服务端地址（保存前会请求 \`/health\`）。
+          App 会自动检查新版本（设置 › 关于）。
           NOTES
           gh release create "$GITHUB_REF_NAME" $prerelease --verify-tag \
             --title "MHub iOS $VERSION" --notes-file build/notes.md \
