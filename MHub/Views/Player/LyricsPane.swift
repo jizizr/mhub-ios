@@ -222,7 +222,13 @@ private struct LyricLineView: View {
                     .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
             }
             ZStack(alignment: .topLeading) {
-                if active {
+                if active, line.words.count <= 1 {
+                    // A line without word timing (line-only lyrics outside 估算逐字,
+                    // or 整行) lights up whole, like the web renderer, instead of
+                    // one slow sweep that looks like estimated word timing.
+                    WordFlow(words: line.words, now: Int.max, script: script, background: line.isBackground)
+                        .transition(.opacity)
+                } else if active {
                     // Only the sung line redraws every frame.
                     TimelineView(.animation) { _ in
                         WordFlow(words: line.words, now: Int(player.currentTime * 1000), script: script, background: line.isBackground)
