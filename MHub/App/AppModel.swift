@@ -1,6 +1,6 @@
 import Foundation
 import MHubKit
-import Observation
+import Perception
 import SwiftUI
 
 enum Appearance: String, CaseIterable, Identifiable {
@@ -24,7 +24,7 @@ enum Appearance: String, CaseIterable, Identifiable {
 
 /// User preferences, stored in UserDefaults. Names match the Android
 /// `Settings` keys so both apps describe the same options.
-@MainActor @Observable
+@MainActor @Perceptible
 final class Settings {
     private let defaults: UserDefaults
 
@@ -66,7 +66,7 @@ final class Settings {
 
 /// App-wide state shared by every screen: server client, settings, the local
 /// library and transient feedback.
-@MainActor @Observable
+@MainActor @Perceptible
 final class AppModel {
     let settings = Settings()
     let library = LibraryStore()
@@ -90,9 +90,9 @@ final class AppModel {
     var lyricShare: LyricShareRequest?
     private var toastID = 0
 
-    @ObservationIgnored private(set) var account: AccountManager!
-    @ObservationIgnored private(set) var updates: UpdateManager!
-    @ObservationIgnored private(set) var downloads: SongDownloads!
+    @PerceptionIgnored private(set) var account: AccountManager!
+    @PerceptionIgnored private(set) var updates: UpdateManager!
+    @PerceptionIgnored private(set) var downloads: SongDownloads!
 
     var client: MHubClient? { settings.serverURL.map { MHubClient(server: $0, account: account?.session) } }
 
@@ -138,13 +138,13 @@ final class AppModel {
 }
 
 /// Local playlists, persisted as `library.json` (same schema as Android).
-@MainActor @Observable
+@MainActor @Perceptible
 final class LibraryStore {
     private(set) var playlists: [Playlist] = []
     private let file: URL
     /// While an account is linked, every edit is also handed over as library
     /// operations for upload (docs/design.md「账号与歌单同步」).
-    @ObservationIgnored var recorder: (([LibraryOp]) -> Void)?
+    @PerceptionIgnored var recorder: (([LibraryOp]) -> Void)?
 
     init() {
         let folder = URL.applicationSupportDirectory

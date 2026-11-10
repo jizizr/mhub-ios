@@ -31,7 +31,7 @@ jobs:
           -destination 'generic/platform=iOS' -archivePath build/MHub.xcarchive
           MARKETING_VERSION="$MARKETING" CURRENT_PROJECT_VERSION="${{ github.run_number }}" MHUB_VERSION="$VERSION"
           CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
-          archive -quiet
+          -skipMacroValidation archive -quiet
       - name: Package IPA
         run: |
           mkdir -p build/Payload
@@ -48,7 +48,7 @@ jobs:
           # What changed comes first: the app's update prompt shows the first lines.
           if [ -f "release-notes/${VERSION}.md" ]; then cat "release-notes/${VERSION}.md"; echo; fi > build/notes.md
           cat >> build/notes.md <<NOTES
-          MHub iOS ${VERSION}。需要 iOS 26；默认连接公共服务器 https://music.op.wiki，也可在设置里改为自托管的 [MHub](https://github.com/jizizr/mhub) 服务端。
+          MHub iOS ${VERSION}。需要 iOS／iPadOS 16 或更新（iOS 26 起为液态玻璃界面）；默认连接公共服务器 https://music.op.wiki，也可在设置里改为自托管的 [MHub](https://github.com/jizizr/mhub) 服务端。
 
           **未签名 IPA**：用 AltStore、SideStore、Sideloadly 或 TrollStore 以你自己的 Apple ID 签名后安装。免费 Apple ID 签名 7 天后需重新签名。
 

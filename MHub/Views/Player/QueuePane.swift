@@ -1,4 +1,5 @@
 import MHubKit
+import Perception
 import SwiftUI
 
 /// The play queue, laid out like the web `QueuePanel` (docs/design.md「播放队列」):
@@ -11,34 +12,40 @@ struct QueuePane: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        let queue = player.queue
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                toggle(Strings.shuffle, "shuffle", on: queue.shuffled) { player.toggleShuffle() }
-                toggle(Strings.repeatMode, queue.repeatMode == .one ? "repeat.1" : "repeat", on: queue.repeatMode != .off) {
-                    player.cycleRepeat()
+        WithPerceptionTracking {
+            let queue = player.queue
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    toggle(Strings.shuffle, "shuffle", on: queue.shuffled) { player.toggleShuffle() }
+                    toggle(Strings.repeatMode, queue.repeatMode == .one ? "repeat.1" : "repeat", on: queue.repeatMode != .off) {
+                        player.cycleRepeat()
+                    }
+                    toggle(Strings.autoplay, "infinity", on: queue.autoplay) { player.setAutoplay(!queue.autoplay) }
                 }
-                toggle(Strings.autoplay, "infinity", on: queue.autoplay) { player.setAutoplay(!queue.autoplay) }
-            }
-            header(queue)
-            if queue.autoplay { autoplayNotice }
-            if queue.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "music.note.list").font(.title).foregroundStyle(.white.opacity(0.5))
-                    Text(Strings.queueEmpty).font(.headline)
-                    Text(Strings.queueEmptyHint).font(.subheadline).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
+                header(queue)
+                if queue.autoplay { autoplayNotice }
+                if queue.isEmpty {
+                    VStack(spacing: 6) {
+                        Image(systemName: "music.note.list").font(.title).foregroundStyle(.white.opacity(0.5))
+                        Text(Strings.queueEmpty).font(.headline)
+                        Text(Strings.queueEmptyHint).font(.subheadline).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 48)
+                } else {
+                    list(queue)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.top, 48)
-            } else {
-                list(queue)
             }
-        }
-        .alert(Strings.clearQueue, isPresented: $confirmingClear) {
-            Button(Strings.cancel, role: .cancel) {}
-            Button(Strings.clear, role: .destructive) { player.clearQueue() }
-        } message: {
-            Text(Strings.clearQueueConfirm)
+            .alert(Strings.clearQueue, isPresented: $confirmingClear) {
+                WithPerceptionTracking {
+                    Button(Strings.cancel, role: .cancel) {}
+                    Button(Strings.clear, role: .destructive) { player.clearQueue() }
+                }
+            } message: {
+                WithPerceptionTracking {
+                    Text(Strings.clearQueueConfirm)
+                }
+            }
         }
     }
 
@@ -49,9 +56,11 @@ struct QueuePane: View {
             if let source = player.source {
                 Text(" · ").foregroundStyle(.white.opacity(0.7))
                 Button { open(source) } label: {
-                    Text(source.isRecommendation ? Strings.sourceRecommendation(source.name) : Strings.sourcePlaylist(source.name))
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
+                    WithPerceptionTracking {
+                        Text(source.isRecommendation ? Strings.sourceRecommendation(source.name) : Strings.sourcePlaylist(source.name))
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -110,23 +119,29 @@ struct QueuePane: View {
     /// Every song in queue order; the drag handles reorder (web `moveInQueue`).
     private func list(_ queue: PlayQueue) -> some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(Array(queue.items.enumerated()), id: \.element.id) { index, track in
-                    row(index, track, current: index == queue.index)
+            WithPerceptionTracking {
+                List {
+                    WithPerceptionTracking {
+                        ForEach(Array(queue.items.enumerated()), id: \.element.id) { index, track in
+                            WithPerceptionTracking {
+                                row(index, track, current: index == queue.index)
+                            }
+                        }
+                        .onMove { source, destination in
+                            guard let from = source.first else { return }
+                            player.move(from: from, to: from < destination ? destination - 1 : destination)
+                        }
+                        .onDelete { offsets in
+                            for index in offsets.sorted(by: >) { player.remove(at: index) }
+                        }
+                    }
                 }
-                .onMove { source, destination in
-                    guard let from = source.first else { return }
-                    player.move(from: from, to: from < destination ? destination - 1 : destination)
-                }
-                .onDelete { offsets in
-                    for index in offsets.sorted(by: >) { player.remove(at: index) }
-                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.editMode, .constant(.active))
+                // Open on the playing song, centred in the list.
+                .onAppear { if let id = queue.current?.id { proxy.scrollTo(id, anchor: .center) } }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.editMode, .constant(.active))
-            // Open on the playing song, centred in the list.
-            .onAppear { if let id = queue.current?.id { proxy.scrollTo(id, anchor: .center) } }
         }
     }
 
@@ -134,26 +149,28 @@ struct QueuePane: View {
         Button {
             player.select(index)
         } label: {
-            HStack(spacing: 12) {
-                ArtworkView(url: track.coverURL, cornerRadius: 5)
-                    .frame(width: 42, height: 42)
-                    .overlay {
-                        if current {
-                            RoundedRectangle(cornerRadius: 5).fill(.black.opacity(0.35))
-                            Image(systemName: "waveform").font(.system(size: 15, weight: .bold))
+            WithPerceptionTracking {
+                HStack(spacing: 12) {
+                    ArtworkView(url: track.coverURL, cornerRadius: 5)
+                        .frame(width: 42, height: 42)
+                        .overlay {
+                            if current {
+                                RoundedRectangle(cornerRadius: 5).fill(.black.opacity(0.35))
+                                Image(systemName: "waveform").font(.system(size: 15, weight: .bold))
+                            }
                         }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(track.title)
+                            .fontWeight(current ? .semibold : .regular)
+                            .foregroundStyle(current ? Color.accentColor : .white)
+                            .lineLimit(1)
+                        Text((track.artist.isEmpty ? Strings.unknownArtist : track.artist) + (track.isRecommendation ? Strings.autoplayRecommended : ""))
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                     }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(track.title)
-                        .fontWeight(current ? .semibold : .regular)
-                        .foregroundStyle(current ? Color.accentColor : .white)
-                        .lineLimit(1)
-                    Text((track.artist.isEmpty ? Strings.unknownArtist : track.artist) + (track.isRecommendation ? Strings.autoplayRecommended : ""))
-                        .font(.subheadline).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .contentShape(.rect)
             }
-            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
@@ -168,7 +185,7 @@ struct QueuePane: View {
                 .foregroundStyle(on ? Color.black : Color.white)
         }
         .buttonStyle(.plain)
-        .glassEffect(on ? .regular.tint(.white).interactive() : .regular.interactive(), in: .capsule)
+        .glass(on ? .tintedInteractive(.white) : .interactive, in: .capsule)
         .accessibilityLabel(label)
         .accessibilityAddTraits(on ? .isSelected : [])
     }

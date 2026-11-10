@@ -1,6 +1,6 @@
 # MHub for iOS
 
-[MHub](https://github.com/jizizr/mhub) 的 iOS 客户端（SwiftUI，iOS 26+）。连接自托管的 MHub 服务端，操作逻辑与网页版一致，界面使用液态玻璃、底栏附件迷你播放器、缩放转场等系统特性，参照 Apple Music 的设计语言。Android 版见 [mhub-android](https://github.com/jizizr/mhub-android)。
+[MHub](https://github.com/jizizr/mhub) 的 iOS 客户端（SwiftUI，iOS／iPadOS 16+；iOS 26 起使用液态玻璃）。连接自托管的 MHub 服务端，操作逻辑与网页版一致，界面使用液态玻璃、底栏附件迷你播放器、缩放转场等系统特性，参照 Apple Music 的设计语言。Android 版见 [mhub-android](https://github.com/jizizr/mhub-android)。
 
 ## 安装 Beta
 
@@ -23,8 +23,10 @@ docs/                两端共同的交互规范与接口契约 —— 与 mhub-
 ```sh
 swift test --package-path MHubKit     # 逻辑与共享用例
 xcodegen generate                     # 生成 MHub.xcodeproj
-xcodebuild -project MHub.xcodeproj -scheme MHub -destination 'generic/platform=iOS Simulator' build
+xcodebuild -project MHub.xcodeproj -scheme MHub -destination 'generic/platform=iOS Simulator' -skipMacroValidation build
 ```
+
+支持 iOS 16：状态模型用 [swift-perception](https://github.com/pointfreeco/swift-perception) 的 `@Perceptible`（iOS 17+ 即系统 Observation）。新写视图时：`body` 和会延后执行的视图闭包（`ForEach`、`List`、`GeometryReader`、`sheet`、`Menu` 等）包在 `WithPerceptionTracking` 里；绑定到模型的 `$x.y` 加 `.tracked`，否则 iOS 16 上改了值界面不刷新。iOS 17+ 才有的视图和修饰符走 `Views/Components/Compat.swift` 里的兼容封装。命令行构建要加 `-skipMacroValidation`（Xcode 里首次构建会提示信任该宏）。
 
 模拟器自动化测试播放时以 `MHUB_MUTE=1` 启动保持静音（`SIMCTL_CHILD_MHUB_MUTE=1 xcrun simctl launch …`）；`-server <地址>` 启动参数可覆盖已保存的服务端地址。
 

@@ -1,6 +1,6 @@
 import Foundation
 import MHubKit
-import Observation
+import Perception
 import Security
 import UIKit
 
@@ -48,7 +48,7 @@ final class KeychainSession: SessionStore, @unchecked Sendable {
 /// Local playlists stay the source of the UI; edits go to a persisted queue of
 /// operations uploaded in batches, and every server snapshot replaces the local
 /// library with the still-pending operations replayed on top.
-@MainActor @Observable
+@MainActor @Perceptible
 final class AccountManager {
     enum Sync { case idle, syncing, synced, offline }
 

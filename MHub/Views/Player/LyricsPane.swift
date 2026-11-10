@@ -1,4 +1,5 @@
 import MHubKit
+import Perception
 import SwiftUI
 
 /// Apple Music style lyrics.
@@ -15,6 +16,9 @@ import SwiftUI
 struct LyricsPane: View {
     @Environment(PlayerController.self) private var player
     @Environment(AppModel.self) private var app
+    /// Where the focused line sits, as a fraction of the pane height: a third
+    /// down on iPhone; higher in the wide player, where the pane starts at the top.
+    var anchorFraction: CGFloat = 0.3
     @State private var heights: [Int: CGFloat] = [:]
     @State private var focus = 0
     @State private var interlude: Interlude?
@@ -37,97 +41,103 @@ struct LyricsPane: View {
     }
 
     var body: some View {
-        let lyrics = player.lyrics.applying(app.settings.lyricWordMode)
-        Group {
-            if lyrics.isEmpty {
-                Text(player.lyricsState == .loading ? Strings.loadingLyrics : Strings.noLyrics)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if !lyrics.isSynced {
-                ScrollView {
-                    Text(lyrics.lines.map { app.settings.lyricScript.convert($0.text) }.joined(separator: "\n"))
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineSpacing(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 40)
+        WithPerceptionTracking {
+            let lyrics = player.lyrics.applying(app.settings.lyricWordMode)
+            Group {
+                if lyrics.isEmpty {
+                    Text(player.lyricsState == .loading ? Strings.loadingLyrics : Strings.noLyrics)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if !lyrics.isSynced {
+                    ScrollView {
+                        Text(lyrics.lines.map { app.settings.lyricScript.convert($0.text) }.joined(separator: "\n"))
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineSpacing(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 40)
+                    }
+                    .scrollIndicators(.hidden)
+                } else {
+                    synced(lyrics)
                 }
-                .scrollIndicators(.hidden)
-            } else {
-                synced(lyrics)
             }
         }
     }
 
     private func synced(_ lyrics: Lyrics) -> some View {
         GeometryReader { geometry in
-            let anchor = geometry.size.height * 0.3
-            let top = (0..<focus).reduce(CGFloat(0)) { $0 + (heights[$1] ?? 60) + Self.spacing }
-            let scroll = anchor - top
-            VStack(alignment: .leading, spacing: Self.spacing) {
-                ForEach(lyrics.lines) { line in
-                    let distance = line.id - focus
-                    LyricLineView(
-                        line: line,
-                        state: lineState(line, lyrics),
-                        distance: browsing ? 0 : distance,
-                        interlude: interlude?.before == line.id ? interlude : nil,
-                        script: app.settings.lyricScript,
-                        showsTranslation: app.settings.showTranslation,
-                        showsRoman: app.settings.showRoman
-                    )
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        if heights[line.id] != $0 { layoutChangedAt = .now }
-                        heights[line.id] = $0
+            WithPerceptionTracking {
+                let anchor = geometry.size.height * anchorFraction
+                let top = (0..<focus).reduce(CGFloat(0)) { $0 + (heights[$1] ?? 60) + Self.spacing }
+                let scroll = anchor - top
+                VStack(alignment: .leading, spacing: Self.spacing) {
+                    ForEach(lyrics.lines) { line in
+                        WithPerceptionTracking {
+                            let distance = line.id - focus
+                            LyricLineView(
+                                line: line,
+                                state: lineState(line, lyrics),
+                                distance: browsing ? 0 : distance,
+                                interlude: interlude?.before == line.id ? interlude : nil,
+                                script: app.settings.lyricScript,
+                                showsTranslation: app.settings.showTranslation,
+                                showsRoman: app.settings.showRoman
+                            )
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                                if heights[line.id] != $0 { layoutChangedAt = .now }
+                                heights[line.id] = $0
+                            }
+                            .contentShape(.rect)
+                            .onTapGesture {
+                                player.seek(to: Double(line.start) / 1000)
+                                endBrowsing()
+                            }
+                            // Long-pressing a line opens lyric sharing with that line chosen.
+                            .onLongPressGesture {
+                                guard !line.isBackground, let track = player.current else { return }
+                                app.lyricShare = LyricShareRequest(track: track, line: line.id)
+                            }
+                            // Every line follows the focus with its own slightly later spring.
+                            .offset(y: scroll + manualOffset + dragOffset)
+                            .animation(
+                                settled ? .spring(response: 0.62, dampingFraction: 0.84)
+                                    .delay(dragOffset != 0 ? 0 : Double(min(max(distance, 0), 8)) * 0.045) : nil,
+                                value: focus
+                            )
+                        }
                     }
-                    .contentShape(.rect)
-                    .onTapGesture {
-                        player.seek(to: Double(line.start) / 1000)
-                        endBrowsing()
+                    if !lyrics.credits.isEmpty {
+                        Text(lyrics.credits.joined(separator: "\n"))
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.4))
+                            .offset(y: scroll + manualOffset + dragOffset)
                     }
-                    // Long-pressing a line opens lyric sharing with that line chosen.
-                    .onLongPressGesture {
-                        guard !line.isBackground, let track = player.current else { return }
-                        app.lyricShare = LyricShareRequest(track: track, line: line.id)
-                    }
-                    // Every line follows the focus with its own slightly later spring.
-                    .offset(y: scroll + manualOffset + dragOffset)
-                    .animation(
-                        settled ? .spring(response: 0.62, dampingFraction: 0.84)
-                            .delay(dragOffset != 0 ? 0 : Double(min(max(distance, 0), 8)) * 0.045) : nil,
-                        value: focus
-                    )
                 }
-                if !lyrics.credits.isEmpty {
-                    Text(lyrics.credits.joined(separator: "\n"))
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.4))
-                        .offset(y: scroll + manualOffset + dragOffset)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: geometry.size.height, alignment: .top)
+                // Hidden until every line is measured, so the first visible frame
+                // already has the current line in place.
+                // As in Apple Music the lyrics appear once the artwork has moved:
+                // placed at the current line while hidden, then faded in.
+                .opacity(settled && heights.count >= lyrics.lines.count ? 1 : 0)
+                .animation(.easeOut(duration: 0.26), value: settled)
+                .contentShape(.rect)
+                .gesture(
+                    DragGesture(minimumDistance: 6)
+                        .onChanged { value in
+                            browsing = true
+                            releaseTask?.cancel()
+                            dragOffset = value.translation.height
+                        }
+                        .onEnded { value in
+                            manualOffset += value.predictedEndTranslation.height * 0.6 + value.translation.height * 0.4
+                            dragOffset = 0
+                            scheduleRelease()
+                        }
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: geometry.size.height, alignment: .top)
-            // Hidden until every line is measured, so the first visible frame
-            // already has the current line in place.
-            // As in Apple Music the lyrics appear once the artwork has moved:
-            // placed at the current line while hidden, then faded in.
-            .opacity(settled && heights.count >= lyrics.lines.count ? 1 : 0)
-            .animation(.easeOut(duration: 0.26), value: settled)
-            .contentShape(.rect)
-            .gesture(
-                DragGesture(minimumDistance: 6)
-                    .onChanged { value in
-                        browsing = true
-                        releaseTask?.cancel()
-                        dragOffset = value.translation.height
-                    }
-                    .onEnded { value in
-                        manualOffset += value.predictedEndTranslation.height * 0.6 + value.translation.height * 0.4
-                        dragOffset = 0
-                        scheduleRelease()
-                    }
-            )
         }
         .clipped()
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
@@ -206,6 +216,7 @@ private struct LyricLineView: View {
     enum State { case past, active, upcoming }
 
     @Environment(PlayerController.self) private var player
+    @Environment(\.lyricScale) private var scale
     var line: LyricLine
     var state: State
     var distance: Int
@@ -215,51 +226,55 @@ private struct LyricLineView: View {
     var showsRoman: Bool
 
     var body: some View {
-        let active = state == .active
-        VStack(alignment: .leading, spacing: 8) {
-            if let interlude {
-                InterludeDots(interlude: interlude)
-                    .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
-            }
-            ZStack(alignment: .topLeading) {
-                if active, line.words.count <= 1 {
-                    // A line without word timing (line-only lyrics outside 估算逐字,
-                    // or 整行) lights up whole, like the web renderer, instead of
-                    // one slow sweep that looks like estimated word timing.
-                    WordFlow(words: line.words, now: Int.max, script: script, background: line.isBackground)
+        WithPerceptionTracking {
+            let active = state == .active
+            VStack(alignment: .leading, spacing: 8) {
+                if let interlude {
+                    InterludeDots(interlude: interlude)
+                        .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
+                }
+                ZStack(alignment: .topLeading) {
+                    if active, line.words.count <= 1 {
+                        // A line without word timing (line-only lyrics outside 估算逐字,
+                        // or 整行) lights up whole, like the web renderer, instead of
+                        // one slow sweep that looks like estimated word timing.
+                        WordFlow(words: line.words, now: Int.max, script: script, background: line.isBackground)
+                            .transition(.opacity)
+                    } else if active {
+                        // Only the sung line redraws every frame.
+                        TimelineView(.animation) { _ in
+                            WithPerceptionTracking {
+                                WordFlow(words: line.words, now: Int(player.currentTime * 1000), script: script, background: line.isBackground)
+                            }
+                        }
                         .transition(.opacity)
-                } else if active {
-                    // Only the sung line redraws every frame.
-                    TimelineView(.animation) { _ in
-                        WordFlow(words: line.words, now: Int(player.currentTime * 1000), script: script, background: line.isBackground)
+                    } else {
+                        // Sung and upcoming lines rest dim, as in Apple Music; a
+                        // finished line fades back instead of snapping.
+                        WordFlow(words: line.words, now: Int.min, script: script, background: line.isBackground, resting: true)
+                            .transition(.opacity)
                     }
-                    .transition(.opacity)
-                } else {
-                    // Sung and upcoming lines rest dim, as in Apple Music; a
-                    // finished line fades back instead of snapping.
-                    WordFlow(words: line.words, now: Int.min, script: script, background: line.isBackground, resting: true)
-                        .transition(.opacity)
+                }
+                .animation(.easeOut(duration: 0.45), value: active)
+                if showsRoman, !line.roman.isEmpty {
+                    Text(line.roman).font(.system(size: 16 * scale, weight: .semibold))
+                        .foregroundStyle(.white.opacity(active ? 0.65 : 0.28))
+                }
+                if showsTranslation, !line.translation.isEmpty {
+                    Text(script.convert(line.translation)).font(.system(size: 20 * scale, weight: .semibold))
+                        .foregroundStyle(.white.opacity(active ? 0.65 : 0.28))
                 }
             }
-            .animation(.easeOut(duration: 0.45), value: active)
-            if showsRoman, !line.roman.isEmpty {
-                Text(line.roman).font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(active ? 0.65 : 0.28))
-            }
-            if showsTranslation, !line.translation.isEmpty {
-                Text(script.convert(line.translation)).font(.title3.weight(.semibold))
-                    .foregroundStyle(.white.opacity(active ? 0.65 : 0.28))
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scaleEffect(active ? 1 : 0.97, anchor: .leading)
+            // No blur: lines away from the focus only dim a little further.
+            .opacity(active ? 1 : (abs(distance) <= 2 ? 1 : 0.75) * (line.isBackground ? 0.7 : 1))
+            .animation(.spring(response: 0.55, dampingFraction: 0.85), value: active)
+            .animation(.easeOut(duration: 0.4), value: distance)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(script.convert(line.text))
+            .accessibilityAddTraits(active ? .isSelected : [])
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scaleEffect(active ? 1 : 0.97, anchor: .leading)
-        // No blur: lines away from the focus only dim a little further.
-        .opacity(active ? 1 : (abs(distance) <= 2 ? 1 : 0.75) * (line.isBackground ? 0.7 : 1))
-        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: active)
-        .animation(.easeOut(duration: 0.4), value: distance)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(script.convert(line.text))
-        .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
 
@@ -271,36 +286,41 @@ private struct WordFlow: View {
     var script: LyricScript
     var background: Bool
     var resting = false
+    @Environment(\.lyricScale) private var scale
 
     private static let dim = 0.3
 
     var body: some View {
-        let font: Font = background ? .system(size: 22, weight: .bold) : .system(size: 32, weight: .bold)
-        WrapLayout(lineSpacing: background ? 2 : 4) {
-            ForEach(Array(words.enumerated()), id: \.offset) { _, word in
-                let text = script.convert(word.text)
-                let progress = Self.progress(word, now)
-                let duration = word.end - word.start
-                // Long held words glow and swell a little while sung.
-                let held = duration >= 1000 && progress > 0 && progress < 1 && !resting
-                let swell = held ? sin(.pi * progress) : 0
-                Text(text)
-                    .font(font)
-                    .foregroundStyle(.white.opacity(Self.dim))
-                    .overlay(alignment: .leading) {
-                        if progress > 0 {
-                            Text(text)
-                                .font(font)
-                                .foregroundStyle(.white)
-                                .mask {
-                                    LinearGradient(stops: Self.sweep(progress), startPoint: .leading, endPoint: .trailing)
+        WithPerceptionTracking {
+            let font: Font = .system(size: (background ? 22 : 32) * scale, weight: .bold)
+            WrapLayout(lineSpacing: background ? 2 : 4) {
+                ForEach(Array(words.enumerated()), id: \.offset) { _, word in
+                    WithPerceptionTracking {
+                        let text = script.convert(word.text)
+                        let progress = Self.progress(word, now)
+                        let duration = word.end - word.start
+                        // Long held words glow and swell a little while sung.
+                        let held = duration >= 1000 && progress > 0 && progress < 1 && !resting
+                        let swell = held ? sin(.pi * progress) : 0
+                        Text(text)
+                            .font(font)
+                            .foregroundStyle(.white.opacity(Self.dim))
+                            .overlay(alignment: .leading) {
+                                if progress > 0 {
+                                    Text(text)
+                                        .font(font)
+                                        .foregroundStyle(.white)
+                                        .mask {
+                                            LinearGradient(stops: Self.sweep(progress), startPoint: .leading, endPoint: .trailing)
+                                        }
                                 }
-                        }
+                            }
+                            .shadow(color: .white.opacity(0.55 * swell), radius: 10)
+                            .scaleEffect(1 + 0.05 * swell, anchor: .bottom)
+                            // Sung words float up slightly.
+                            .offset(y: -2.5 * Self.ease(progress))
                     }
-                    .shadow(color: .white.opacity(0.55 * swell), radius: 10)
-                    .scaleEffect(1 + 0.05 * swell, anchor: .bottom)
-                    // Sung words float up slightly.
-                    .offset(y: -2.5 * Self.ease(progress))
+                }
             }
         }
     }
@@ -331,22 +351,28 @@ private struct InterludeDots: View {
     var interlude: LyricsPane.Interlude
 
     var body: some View {
-        TimelineView(.animation) { context in
-            let now = Double(player.currentTime * 1000)
-            let progress = min(max((now - Double(interlude.start)) / Double(max(1, interlude.end - interlude.start)), 0), 1)
-            let breath = 1 + 0.08 * sin(context.date.timeIntervalSinceReferenceDate * 2.4)
-            HStack(spacing: 10) {
-                ForEach(0..<3, id: \.self) { index in
-                    let fill = min(max(progress * 3 - Double(index), 0), 1)
-                    Circle()
-                        .fill(.white.opacity(0.3 + 0.7 * fill))
-                        .frame(width: 13, height: 13)
+        WithPerceptionTracking {
+            TimelineView(.animation) { context in
+                WithPerceptionTracking {
+                    let now = Double(player.currentTime * 1000)
+                    let progress = min(max((now - Double(interlude.start)) / Double(max(1, interlude.end - interlude.start)), 0), 1)
+                    let breath = 1 + 0.08 * sin(context.date.timeIntervalSinceReferenceDate * 2.4)
+                    HStack(spacing: 10) {
+                        ForEach(0..<3, id: \.self) { index in
+                            WithPerceptionTracking {
+                                let fill = min(max(progress * 3 - Double(index), 0), 1)
+                                Circle()
+                                    .fill(.white.opacity(0.3 + 0.7 * fill))
+                                    .frame(width: 13, height: 13)
+                            }
+                        }
+                    }
+                    .scaleEffect(breath * (progress > 0.94 ? 1 - (progress - 0.94) * 4 : 1), anchor: .leading)
+                    .padding(.vertical, 6)
                 }
             }
-            .scaleEffect(breath * (progress > 0.94 ? 1 - (progress - 0.94) * 4 : 1), anchor: .leading)
-            .padding(.vertical, 6)
+            .accessibilityHidden(true)
         }
-        .accessibilityHidden(true)
     }
 }
 
@@ -389,4 +415,10 @@ private struct WrapLayout: Layout {
         }
         return rows
     }
+}
+
+extension EnvironmentValues {
+    /// Lyric text size relative to the iPhone sizes; the wide player sets it
+    /// larger so the lyrics fill their column.
+    @Entry var lyricScale: CGFloat = 1
 }

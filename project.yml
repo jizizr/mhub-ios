@@ -4,7 +4,7 @@ name: MHub
 options:
   bundleIdPrefix: io.github.mhub
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "16.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -19,6 +19,11 @@ settings:
 packages:
   MHubKit:
     path: MHubKit
+  # Observation back-port: @Perceptible models track like @Observable on
+  # iOS 16 and are plain Observation on iOS 17+.
+  Perception:
+    url: https://github.com/pointfreeco/swift-perception
+    from: 2.0.12
 targets:
   MHub:
     type: application
@@ -27,6 +32,7 @@ targets:
       - path: MHub
     dependencies:
       - package: MHubKit
+      - package: Perception
     info:
       path: MHub/Resources/Info.plist
       properties:
@@ -58,7 +64,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.mhub.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        # Mac Catalyst with the Mac idiom (native controls and text sizes);
+        # the same bundle id, so settings and downloads use the app's own container.
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         GENERATE_INFOPLIST_FILE: NO
 schemes:
   MHub:

@@ -1,5 +1,6 @@
 import CoreImage
 import MHubKit
+import Perception
 import SwiftUI
 
 /// Pick up to five lines and share them as an image card, like Apple Music
@@ -22,63 +23,75 @@ struct LyricsShareView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-            // A fixed-height preview: the card keeps its natural size (that is
-            // what gets shared) and is scaled down to fit, so choosing more lines
-            // never pushes the list below.
-            card
-                .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
-                .scaleEffect(cardHeight > Self.previewHeight ? Self.previewHeight / cardHeight : 1, anchor: .top)
-                .frame(height: Self.previewHeight, alignment: .top)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            Text(Strings.shareLyricsHint(Self.maxLines))
-                .font(.footnote).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20).padding(.top, 10)
-            ScrollViewReader { proxy in
-                List {
-                    Section {
-                        ForEach(lines) { line in
-                            let on = selected.contains(line.id)
-                            Button {
-                                if on { selected.remove(line.id) } else if selected.count < Self.maxLines { selected.insert(line.id) }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(on ? Color.accentColor : .secondary)
-                                    Text(app.settings.lyricScript.convert(line.text)).foregroundStyle(.primary)
+        WithPerceptionTracking {
+            NavigationStack {
+                VStack(spacing: 0) {
+                // A fixed-height preview: the card keeps its natural size (that is
+                // what gets shared) and is scaled down to fit, so choosing more lines
+                // never pushes the list below.
+                card
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
+                    .scaleEffect(cardHeight > Self.previewHeight ? Self.previewHeight / cardHeight : 1, anchor: .top)
+                    .frame(height: Self.previewHeight, alignment: .top)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                Text(Strings.shareLyricsHint(Self.maxLines))
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.top, 10)
+                ScrollViewReader { proxy in
+                    WithPerceptionTracking {
+                        List {
+                            WithPerceptionTracking {
+                                Section {
+                                    ForEach(lines) { line in
+                                        WithPerceptionTracking {
+                                            let on = selected.contains(line.id)
+                                            Button {
+                                                if on { selected.remove(line.id) } else if selected.count < Self.maxLines { selected.insert(line.id) }
+                                            } label: {
+                                                WithPerceptionTracking {
+                                                    HStack(spacing: 12) {
+                                                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                                            .foregroundStyle(on ? Color.accentColor : .secondary)
+                                                        Text(app.settings.lyricScript.convert(line.text)).foregroundStyle(.primary)
+                                                    }
+                                                }
+                                            }
+                                            .id(line.id)
+                                        }
+                                    }
                                 }
                             }
-                            .id(line.id)
+                        }
+                        .onAppear {
+                            if let line = request.line, lines.contains(where: { $0.id == line }) {
+                                selected = [line]
+                                proxy.scrollTo(line, anchor: .center)
+                            }
                         }
                     }
                 }
-                .onAppear {
-                    if let line = request.line, lines.contains(where: { $0.id == line }) {
-                        selected = [line]
-                        proxy.scrollTo(line, anchor: .center)
-                    }
                 }
-            }
-            }
-            .navigationTitle(Strings.shareLyrics)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Strings.cancel, systemImage: "xmark") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if let image {
-                        ShareLink(item: image, preview: SharePreview(Strings.shareLyrics, image: Image(uiImage: image.image))) {
-                            Label(Strings.share, systemImage: "square.and.arrow.up")
+                .navigationTitle(Strings.shareLyrics)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    WithPerceptionTracking {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(Strings.cancel, systemImage: "xmark") { dismiss() }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            if let image {
+                                ShareLink(item: image, preview: SharePreview(Strings.shareLyrics, image: Image(uiImage: image.image))) {
+                                    Label(Strings.share, systemImage: "square.and.arrow.up")
+                                }
+                            }
                         }
                     }
                 }
+                .task(id: selected) { render() }
             }
-            .task(id: selected) { render() }
         }
     }
 
@@ -122,58 +135,62 @@ private struct LyricsCard: View {
     var link: URL?
 
     var body: some View {
-        let colors = palette.isEmpty ? [Color(white: 0.24), Color(white: 0.11)] : Array(palette.prefix(2))
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Group {
-                    if let artwork {
-                        Image(uiImage: artwork).resizable().scaledToFill()
-                    } else {
-                        Rectangle().fill(.white.opacity(0.15)).overlay(Image(systemName: "music.note").foregroundStyle(.white.opacity(0.6)))
+        WithPerceptionTracking {
+            let colors = palette.isEmpty ? [Color(white: 0.24), Color(white: 0.11)] : Array(palette.prefix(2))
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Group {
+                        if let artwork {
+                            Image(uiImage: artwork).resizable().scaledToFill()
+                        } else {
+                            Rectangle().fill(.white.opacity(0.15)).overlay(Image(systemName: "music.note").foregroundStyle(.white.opacity(0.6)))
+                        }
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(.rect(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title).font(.headline).lineLimit(1)
+                        Text(track.artist).font(.subheadline).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
                     }
                 }
-                .frame(width: 52, height: 52)
-                .clipShape(.rect(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title).font(.headline).lineLimit(1)
-                    Text(track.artist).font(.subheadline).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                .padding(.bottom, 4)
+                if lines.isEmpty {
+                    Text(Strings.shareLyricsEmpty).font(.title3.bold()).foregroundStyle(.white.opacity(0.6))
                 }
-            }
-            .padding(.bottom, 4)
-            if lines.isEmpty {
-                Text(Strings.shareLyricsEmpty).font(.title3.bold()).foregroundStyle(.white.opacity(0.6))
-            }
-            ForEach(lines) { line in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(script.convert(line.text)).font(.system(size: 24, weight: .bold))
-                    if showsTranslation, !line.translation.isEmpty {
-                        Text(script.convert(line.translation)).font(.callout.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
+                ForEach(lines) { line in
+                    WithPerceptionTracking {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(script.convert(line.text)).font(.system(size: 24, weight: .bold))
+                            if showsTranslation, !line.translation.isEmpty {
+                                Text(script.convert(line.translation)).font(.callout.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
+                            }
+                        }
                     }
                 }
-            }
-            HStack(alignment: .bottom) {
-                Text("MHub").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
-                Spacer()
-                // The song's web link, so whoever sees the card can play it.
-                if let link, let qr = QRCode.image(link.absoluteString) {
-                    Image(uiImage: qr)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 54, height: 54)
-                        .padding(5)
-                        .background(.white, in: .rect(cornerRadius: 8))
+                HStack(alignment: .bottom) {
+                    Text("MHub").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    // The song's web link, so whoever sees the card can play it.
+                    if let link, let qr = QRCode.image(link.absoluteString) {
+                        Image(uiImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 54, height: 54)
+                            .padding(5)
+                            .background(.white, in: .rect(cornerRadius: 8))
+                    }
                 }
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
+            .background(LinearGradient(colors: colors.count > 1 ? colors : [colors[0], colors[0].opacity(0.7)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing))
+            .background(.black)
+            .overlay(Color.black.opacity(0.18).allowsHitTesting(false).blendMode(.multiply))
+            .clipShape(.rect(cornerRadius: 24))
         }
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
-        .background(LinearGradient(colors: colors.count > 1 ? colors : [colors[0], colors[0].opacity(0.7)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing))
-        .background(.black)
-        .overlay(Color.black.opacity(0.18).allowsHitTesting(false).blendMode(.multiply))
-        .clipShape(.rect(cornerRadius: 24))
     }
 }
 

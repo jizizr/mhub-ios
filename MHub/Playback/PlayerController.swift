@@ -2,7 +2,7 @@ import AVFoundation
 import MediaPlayer
 import Network
 import MHubKit
-import Observation
+import Perception
 import SwiftUI
 import UIKit
 
@@ -12,7 +12,7 @@ import UIKit
 /// class turns queue positions into `AVPlayerItem`s, keeps the next song
 /// queued in `AVQueuePlayer` once the current one is fully cached (gapless and
 /// lock-screen safe), and publishes Now Playing info and remote commands.
-@MainActor @Observable
+@MainActor @Perceptible
 final class PlayerController {
     enum Phase: Equatable {
         case idle, loading, playing, paused
@@ -78,12 +78,12 @@ final class PlayerController {
     }
 
     /// Songs the server reported as unplayable, for this run (web `unplayableTracks`).
-    @ObservationIgnored private var unplayable = Set<String>()
-    @ObservationIgnored private var consecutiveFailures = 0
+    @PerceptionIgnored private var unplayable = Set<String>()
+    @PerceptionIgnored private var consecutiveFailures = 0
     private static let maxConsecutiveFailures = 5
     /// Low Data Mode: no next-song download (web: `saveData`).
-    @ObservationIgnored private let pathMonitor = NWPathMonitor()
-    @ObservationIgnored private var savingData = false
+    @PerceptionIgnored private let pathMonitor = NWPathMonitor()
+    @PerceptionIgnored private var savingData = false
 
     init(app: AppModel) {
         self.app = app

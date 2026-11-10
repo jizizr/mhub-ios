@@ -1,4 +1,5 @@
 import MHubKit
+import Perception
 import SwiftUI
 
 struct SettingsView: View {
@@ -13,75 +14,79 @@ struct SettingsView: View {
     private static let cacheLimits: [Int64] = [1 << 30, 2 << 30, 5 << 30, 10 << 30]
 
     var body: some View {
-        @Bindable var settings = app.settings
-        NavigationStack {
-            Form {
-                AccountSection()
-                Section {
-                    TextField(Strings.serverPlaceholder, text: $address)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .submitLabel(.done)
-                        .onSubmit { Task { await saveServer() } }
-                    if address != settings.serverAddress {
-                        Button(checking ? Strings.connecting : Strings.connect) { Task { await saveServer() } }
-                            .disabled(checking)
+        WithPerceptionTracking {
+            @Perception.Bindable var settings = app.settings
+            NavigationStack {
+                Form {
+                    AccountSection()
+                    Section {
+                        TextField(Strings.serverPlaceholder, text: $address)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .submitLabel(.done)
+                            .onSubmit { Task { await saveServer() } }
+                        if address != settings.serverAddress {
+                            Button(checking ? Strings.connecting : Strings.connect) { Task { await saveServer() } }
+                                .disabled(checking)
+                        }
+                    } header: {
+                        Text(Strings.server)
+                    } footer: {
+                        Text(serverError ?? Strings.serverFooter).foregroundStyle(serverError == nil ? Color.secondary : Color.red)
                     }
-                } header: {
-                    Text(Strings.server)
-                } footer: {
-                    Text(serverError ?? Strings.serverFooter).foregroundStyle(serverError == nil ? Color.secondary : Color.red)
-                }
 
-                Section {
-                    Picker(Strings.quality, selection: $settings.quality) {
-                        ForEach(Quality.allCases) { Text($0.label).tag($0) }
+                    Section {
+                        Picker(Strings.quality, selection: $settings.quality.tracked) {
+                            ForEach(Quality.allCases) { Text($0.label).tag($0) }
+                        }
+                        Toggle(Strings.autoplay, isOn: Binding(get: { player.queue.autoplay }, set: { player.setAutoplay($0) }).tracked)
+                    } header: {
+                        Text(Strings.playback)
+                    } footer: {
+                        Text(Strings.qualityFooter)
                     }
-                    Toggle(Strings.autoplay, isOn: Binding(get: { player.queue.autoplay }, set: { player.setAutoplay($0) }))
-                } header: {
-                    Text(Strings.playback)
-                } footer: {
-                    Text(Strings.qualityFooter)
-                }
 
-                Section(Strings.search) {
-                    Picker(Strings.searchPlatform, selection: $settings.searchPlatform) {
-                        ForEach(app.platforms) { Text($0.label).tag($0.id) }
+                    Section(Strings.search) {
+                        Picker(Strings.searchPlatform, selection: $settings.searchPlatform.tracked) {
+                            ForEach(app.platforms) { Text($0.label).tag($0.id) }
+                        }
+                    }
+
+                    LyricsSettingsSection()
+                    AppearanceSection()
+
+                    Section(Strings.storage) {
+                        LabeledContent(Strings.cacheUsage, value: cacheSize.byteText)
+                        Picker(Strings.cacheLimit, selection: $settings.cacheLimit.tracked) {
+                            ForEach(Self.cacheLimits, id: \.self) { Text($0.byteText).tag($0) }
+                        }
+                    }
+
+                    Section(Strings.about) {
+                        LabeledContent(Strings.version, value: UpdateManager.currentVersion)
+                        Toggle(Strings.autoUpdate, isOn: $settings.autoUpdate.tracked)
+                        Button(app.updates.checking ? Strings.checkingUpdate : Strings.checkUpdate) {
+                            Task { if let message = await app.updates.checkNow() { app.show(message) } }
+                        }
+                        .disabled(app.updates.checking)
+                        Link(Strings.sourceCode, destination: URL(string: "https://github.com/jizizr/mhub")!)
+                        Text(Strings.licenseText).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-
-                LyricsSettingsSection()
-                AppearanceSection()
-
-                Section(Strings.storage) {
-                    LabeledContent(Strings.cacheUsage, value: cacheSize.byteText)
-                    Picker(Strings.cacheLimit, selection: $settings.cacheLimit) {
-                        ForEach(Self.cacheLimits, id: \.self) { Text($0.byteText).tag($0) }
+                .navigationTitle(Strings.settings)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    WithPerceptionTracking {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(Strings.done, systemImage: "checkmark") { dismiss() }
+                        }
                     }
                 }
-
-                Section(Strings.about) {
-                    LabeledContent(Strings.version, value: UpdateManager.currentVersion)
-                    Toggle(Strings.autoUpdate, isOn: $settings.autoUpdate)
-                    Button(app.updates.checking ? Strings.checkingUpdate : Strings.checkUpdate) {
-                        Task { if let message = await app.updates.checkNow() { app.show(message) } }
-                    }
-                    .disabled(app.updates.checking)
-                    Link(Strings.sourceCode, destination: URL(string: "https://github.com/jizizr/mhub")!)
-                    Text(Strings.licenseText).font(.footnote).foregroundStyle(.secondary)
+                .task {
+                    address = app.settings.serverAddress
+                    cacheSize = await AudioCache.shared.totalSize()
                 }
-            }
-            .navigationTitle(Strings.settings)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(Strings.done, systemImage: "checkmark") { dismiss() }
-                }
-            }
-            .task {
-                address = app.settings.serverAddress
-                cacheSize = await AudioCache.shared.totalSize()
             }
         }
     }
@@ -112,46 +117,50 @@ struct ServerSetupView: View {
     @State private var error: String?
 
     var body: some View {
-        ZStack {
-            LinearGradient(colors: [.pink.opacity(0.55), .purple.opacity(0.45), .blue.opacity(0.4)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-            VStack(spacing: 22) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 92, height: 92)
-                    .glassEffect(.regular.tint(.pink.opacity(0.4)), in: .rect(cornerRadius: 22))
-                Text(Strings.welcome).font(.largeTitle.bold())
-                Text(Strings.welcomeHint).multilineTextAlignment(.center).foregroundStyle(.secondary)
-                VStack(spacing: 12) {
-                    TextField(Strings.serverPlaceholder, text: $address)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .submitLabel(.go)
-                        .onSubmit { Task { await connect() } }
-                        .padding(.horizontal, 18)
-                        .frame(height: 52)
-                        .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
-                    Button {
-                        Task { await connect() }
-                    } label: {
-                        Text(checking ? Strings.connecting : Strings.connect)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 36)
+        WithPerceptionTracking {
+            ZStack {
+                LinearGradient(colors: [.pink.opacity(0.55), .purple.opacity(0.45), .blue.opacity(0.4)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+                VStack(spacing: 22) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 92, height: 92)
+                        .glass(.tinted(.pink.opacity(0.4)), in: .rect(cornerRadius: 22))
+                    Text(Strings.welcome).font(.largeTitle.bold())
+                    Text(Strings.welcomeHint).multilineTextAlignment(.center).foregroundStyle(.secondary)
+                    VStack(spacing: 12) {
+                        TextField(Strings.serverPlaceholder, text: $address)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .submitLabel(.go)
+                            .onSubmit { Task { await connect() } }
+                            .padding(.horizontal, 18)
+                            .frame(height: 52)
+                            .background { Capsule().fill(.clear).glass(.regular, in: .capsule) }
+                        Button {
+                            Task { await connect() }
+                        } label: {
+                            WithPerceptionTracking {
+                                Text(checking ? Strings.connecting : Strings.connect)
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                            }
+                        }
+                        .glassButton(prominent: true)
+                        .controlSize(.large)
+                        .disabled(checking || address.isEmpty)
+                        if let error {
+                            Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                        }
                     }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .disabled(checking || address.isEmpty)
-                    if let error {
-                        Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
-                    }
+                    Text(Strings.serverFooter).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
-                Text(Strings.serverFooter).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(28)
+                .frame(maxWidth: 460)
             }
-            .padding(28)
-            .frame(maxWidth: 460)
         }
     }
 

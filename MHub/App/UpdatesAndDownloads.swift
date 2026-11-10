@@ -1,9 +1,9 @@
 import Foundation
 import MHubKit
-import Observation
+import Perception
 
 /// GitHub release check (docs/design.md「检查更新」).
-@MainActor @Observable
+@MainActor @Perceptible
 final class UpdateManager {
     static let repository = "jizizr/mhub-ios"
 

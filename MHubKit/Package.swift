@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "MHubKit",
-    platforms: [.iOS(.v26), .macOS(.v26)],
+    platforms: [.iOS(.v16), .macOS(.v13), .macCatalyst(.v16)],
     products: [.library(name: "MHubKit", targets: ["MHubKit"])],
     targets: [
         .target(name: "MHubKit"),

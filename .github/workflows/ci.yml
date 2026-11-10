@@ -24,7 +24,7 @@ jobs:
         run: >
           xcodebuild -project MHub.xcodeproj -scheme MHub
           -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO build -quiet
+          CODE_SIGNING_ALLOWED=NO -skipMacroValidation build -quiet
 
   shared:
     runs-on: ubuntu-latest

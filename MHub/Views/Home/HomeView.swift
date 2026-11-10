@@ -1,4 +1,5 @@
 import MHubKit
+import Perception
 import SwiftUI
 
 /// A recommended playlist or album to open.
@@ -9,7 +10,7 @@ struct CollectionRoute: Hashable {
     var cover: String
 }
 
-@MainActor @Observable
+@MainActor @Perceptible
 final class HomeModel {
     var home: RecommendationHome?
     var loading = false
@@ -48,46 +49,56 @@ struct HomeView: View {
     @State private var model = HomeModel()
 
     var body: some View {
-        NavigationStack(path: Bindable(app).homePath) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 30) {
-                    if let home = model.home {
-                        if !home.tags.isEmpty { tags(home.tags) }
-                        if !model.visiblePlaylists.isEmpty { playlists }
-                        if !home.tracks.isEmpty { songs(home.tracks.map(\.track)) }
-                    } else if let error = model.error {
-                        ContentUnavailableView {
-                            Label(Strings.homeLoadFailed, systemImage: "wifi.exclamationmark")
-                        } description: {
-                            Text(error)
-                        } actions: {
-                            Button(Strings.retry) { Task { await model.load(client: app.client) } }
-                                .buttonStyle(.glass)
+        WithPerceptionTracking {
+            NavigationStack(path: Perception.Bindable(app).homePath.tracked) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 30) {
+                        WithPerceptionTracking {
+                            if let home = model.home {
+                                if !home.tags.isEmpty { tags(home.tags) }
+                                if !model.visiblePlaylists.isEmpty { playlists }
+                                if !home.tracks.isEmpty { songs(home.tracks.map(\.track)) }
+                            } else if let error = model.error {
+                                EmptyState {
+                                    Label(Strings.homeLoadFailed, systemImage: "wifi.exclamationmark")
+                                } description: {
+                                    WithPerceptionTracking {
+                                        Text(error)
+                                    }
+                                } actions: {
+                                    WithPerceptionTracking {
+                                        Button(Strings.retry) { Task { await model.load(client: app.client) } }
+                                            .glassButton()
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 60)
+                            } else {
+                                ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
+                            }
+                            if !app.recent.isEmpty { recent }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 60)
-                    } else {
-                        ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                     }
-                    if !app.recent.isEmpty { recent }
+                    .padding(.bottom, 24)
                 }
-                .padding(.bottom, 24)
-            }
-            .navigationTitle(Strings.home)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button(Strings.refresh, systemImage: "arrow.clockwise") {
-                        Task { await model.load(client: app.client, refresh: true) }
+                .navigationTitle(Strings.home)
+                .toolbar {
+                    WithPerceptionTracking {
+                        ToolbarItemGroup(placement: .topBarTrailing) {
+                            Button(Strings.refresh, systemImage: "arrow.clockwise") {
+                                Task { await model.load(client: app.client, refresh: true) }
+                            }
+                            .disabled(model.loading)
+                            SettingsToolbarButton()
+                        }
                     }
-                    .disabled(model.loading)
-                    SettingsToolbarButton()
                 }
+                .refreshable { await model.load(client: app.client, refresh: true) }
+                .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
             }
-            .refreshable { await model.load(client: app.client, refresh: true) }
-            .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
-        }
-        .task(id: app.settings.serverAddress) {
-            if model.home == nil { await model.load(client: app.client) }
+            .task(id: app.settings.serverAddress) {
+                if model.home == nil { await model.load(client: app.client) }
+            }
         }
     }
 
@@ -95,13 +106,17 @@ struct HomeView: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(tags) { tag in
-                    let selected = model.selectedTag == tag.id
-                    let button = Button {
-                        withAnimation(.snappy) { model.selectedTag = selected ? nil : tag.id }
-                    } label: {
-                        Text(tag.label).font(.subheadline.weight(.semibold))
+                    WithPerceptionTracking {
+                        let selected = model.selectedTag == tag.id
+                        let button = Button {
+                            withAnimation(.snappy) { model.selectedTag = selected ? nil : tag.id }
+                        } label: {
+                            WithPerceptionTracking {
+                                Text(tag.label).font(.subheadline.weight(.semibold))
+                            }
+                        }
+                        button.glassButton(prominent: selected)
                     }
-                    if selected { button.buttonStyle(.glassProminent) } else { button.buttonStyle(.glass) }
                 }
             }
             .padding(.horizontal, 20)
@@ -114,25 +129,29 @@ struct HomeView: View {
             SectionHeader(title: Strings.recommendedPlaylists)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(model.visiblePlaylists) { playlist in
-                        NavigationLink(value: CollectionRoute(platform: "applemusic", url: playlist.url,
-                                                              title: playlist.name, cover: playlist.cover)) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ArtworkView(url: URL(string: playlist.cover), cornerRadius: 10)
-                                    .frame(width: 170, height: 170)
-                                Text(playlist.name).font(.subheadline).lineLimit(2)
-                                    .foregroundStyle(.primary)
-                                Text(playlist.curator).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    WithPerceptionTracking {
+                        ForEach(model.visiblePlaylists) { playlist in
+                            WithPerceptionTracking {
+                                NavigationLink(value: CollectionRoute(platform: "applemusic", url: playlist.url,
+                                                                      title: playlist.name, cover: playlist.cover)) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ArtworkView(url: URL(string: playlist.cover), cornerRadius: 10)
+                                            .frame(width: 170, height: 170)
+                                        Text(playlist.name).font(.subheadline).lineLimit(2)
+                                            .foregroundStyle(.primary)
+                                        Text(playlist.curator).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    .frame(width: 170, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .frame(width: 170, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                .scrollTargetLayout()
+                .shelfScrollTargets()
                 .padding(.horizontal, 20)
             }
-            .scrollTargetBehavior(.viewAligned)
+            .shelfScrollBehavior()
             .scrollIndicators(.hidden)
         }
     }
@@ -146,18 +165,22 @@ struct HomeView: View {
                                                             name: Strings.casualListening(tag?.label ?? Strings.madeForYou)))
                 }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .glassButton()
             }
             ScrollView(.horizontal) {
                 LazyHGrid(rows: Array(repeating: GridItem(.fixed(56), spacing: 8), count: 4), spacing: 16) {
-                    ForEach(tracks) { track in
-                        TrackRow(track: track).frame(width: 300)
+                    WithPerceptionTracking {
+                        ForEach(tracks) { track in
+                            WithPerceptionTracking {
+                                TrackRow(track: track).frame(width: 300)
+                            }
+                        }
                     }
                 }
-                .scrollTargetLayout()
+                .shelfScrollTargets()
                 .padding(.horizontal, 20)
             }
-            .scrollTargetBehavior(.viewAligned)
+            .shelfScrollBehavior()
             .scrollIndicators(.hidden)
         }
     }
@@ -167,19 +190,25 @@ struct HomeView: View {
             SectionHeader(title: Strings.recentlyPlayed)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(app.recent) { track in
-                        Button {
-                            player.playNow(track)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ArtworkView(url: track.coverURL, cornerRadius: 10).frame(width: 130, height: 130)
-                                Text(track.title).font(.subheadline).lineLimit(1)
-                                Text(track.artist).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    WithPerceptionTracking {
+                        ForEach(app.recent) { track in
+                            WithPerceptionTracking {
+                                Button {
+                                    player.playNow(track)
+                                } label: {
+                                    WithPerceptionTracking {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            ArtworkView(url: track.coverURL, cornerRadius: 10).frame(width: 130, height: 130)
+                                            Text(track.title).font(.subheadline).lineLimit(1)
+                                            Text(track.artist).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                        .frame(width: 130, alignment: .leading)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { TrackMenuItems(tracks: [track]) }
                             }
-                            .frame(width: 130, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu { TrackMenuItems(tracks: [track]) }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -194,12 +223,14 @@ struct SectionHeader<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        HStack {
-            Text(title).font(.title2.bold())
-            Spacer()
-            trailing
+        WithPerceptionTracking {
+            HStack {
+                Text(title).font(.title2.bold())
+                Spacer()
+                trailing
+            }
+            .padding(.horizontal, 20)
         }
-        .padding(.horizontal, 20)
     }
 }
 
@@ -219,48 +250,54 @@ struct CollectionView: View {
     @State private var error: String?
 
     var body: some View {
-        List {
-            Section {
-                VStack(spacing: 14) {
-                    ArtworkView(url: URL(string: route.cover), cornerRadius: 12)
-                        .frame(width: 240, height: 240)
-                        .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
-                    Text(collection?.title ?? route.title).font(.title2.bold()).multilineTextAlignment(.center)
+        WithPerceptionTracking {
+            List {
+                WithPerceptionTracking {
+                    Section {
+                        VStack(spacing: 14) {
+                            ArtworkView(url: URL(string: route.cover), cornerRadius: 12)
+                                .frame(width: 240, height: 240)
+                                .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
+                            Text(collection?.title ?? route.title).font(.title2.bold()).multilineTextAlignment(.center)
+                            if let collection {
+                                Text(String(format: Strings.songsCount, collection.items.count))
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                PlayShuffleButtons(tracks: collection.items.map(\.track),
+                                                   source: QueueSource(type: QueueSource.collection, name: collection.title, id: route.url,
+                                                                       platform: route.platform, url: route.url, cover: route.cover))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
                     if let collection {
-                        Text(String(format: Strings.songsCount, collection.items.count))
-                            .font(.subheadline).foregroundStyle(.secondary)
-                        PlayShuffleButtons(tracks: collection.items.map(\.track),
-                                           source: QueueSource(type: QueueSource.collection, name: collection.title, id: route.url,
-                                                               platform: route.platform, url: route.url, cover: route.cover))
+                        ForEach(collection.items.map(\.track)) { TrackRow(track: $0) }
+                    } else if let error {
+                        EmptyState(Strings.homeLoadFailed, systemImage: "exclamationmark.triangle", description: Text(error))
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
             }
-            if let collection {
-                ForEach(collection.items.map(\.track)) { TrackRow(track: $0) }
-            } else if let error {
-                ContentUnavailableView(Strings.homeLoadFailed, systemImage: "exclamationmark.triangle", description: Text(error))
-            } else {
-                ProgressView().frame(maxWidth: .infinity)
-            }
-        }
-        .listStyle(.plain)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let collection {
-                Button(Strings.addAllToPlaylist, systemImage: "plus") {
-                    let playlist = library.create(name: collection.title, tracks: collection.items.map(\.track),
-                                                  sourceURL: collection.sourceURL, sourcePlatform: collection.platform)
-                    app.show(Strings.imported(playlist.name, playlist.tracks.count))
+            .listStyle(.plain)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                WithPerceptionTracking {
+                    if let collection {
+                        Button(Strings.addAllToPlaylist, systemImage: "plus") {
+                            let playlist = library.create(name: collection.title, tracks: collection.items.map(\.track),
+                                                          sourceURL: collection.sourceURL, sourcePlatform: collection.platform)
+                            app.show(Strings.imported(playlist.name, playlist.tracks.count))
+                        }
+                    }
                 }
             }
-        }
-        .task {
-            guard collection == nil, let client = app.client else { return }
-            do { collection = try await client.collection(platform: route.platform, url: route.url) }
-            catch { self.error = error.localizedDescription }
+            .task {
+                guard collection == nil, let client = app.client else { return }
+                do { collection = try await client.collection(platform: route.platform, url: route.url) }
+                catch { self.error = error.localizedDescription }
+            }
         }
     }
 }
