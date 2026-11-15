@@ -168,7 +168,7 @@ final class VolumeBridge {
 }
 
 /// Hosts the hidden system volume view and hands its slider to the bridge.
-private struct VolumeHost: UIViewRepresentable {
+struct VolumeHost: UIViewRepresentable {
     let bridge: VolumeBridge
 
     func makeUIView(context: Context) -> MPVolumeView {
@@ -185,6 +185,10 @@ private struct VolumeHost: UIViewRepresentable {
 /// A horizontal capsule slider in the player style; also adjustable by VoiceOver.
 struct CapsuleSlider: View {
     var value: Double
+    /// White in the full player; the window's primary colour in the Mac bar.
+    var color: Color = .white
+    /// Track height at rest and while dragged.
+    var height: (rest: CGFloat, active: CGFloat) = (7, 12)
     var onChange: (Double) -> Void
     @State private var dragging = false
 
@@ -193,11 +197,11 @@ struct CapsuleSlider: View {
             GeometryReader { geometry in
                 WithPerceptionTracking {
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.2))
-                        Capsule().fill(.white.opacity(dragging ? 1 : 0.75))
+                        Capsule().fill(color.opacity(0.2))
+                        Capsule().fill(color.opacity(dragging ? 1 : 0.75))
                             .frame(width: max(0, geometry.size.width * min(max(value, 0), 1)))
                     }
-                    .frame(height: dragging ? 12 : 7)
+                    .frame(height: dragging ? height.active : height.rest)
                     .frame(maxHeight: .infinity)
                     .contentShape(.rect)
                     .gesture(

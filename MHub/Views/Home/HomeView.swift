@@ -47,17 +47,22 @@ struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(PlayerController.self) private var player
     @State private var model = HomeModel()
+    /// The page width, so the song grid's columns fill it exactly.
+    @State private var pageWidth: CGFloat = 0
 
     var body: some View {
         WithPerceptionTracking {
+            // Read here, not inside the lazy stack, so a resize redraws the grid.
+            let columnWidth = songColumnWidth
             NavigationStack(path: Perception.Bindable(app).homePath.tracked) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         WithPerceptionTracking {
                             if let home = model.home {
-                                if !home.tags.isEmpty { tags(home.tags) }
+                                // Mac shows every recommended playlist, without the tag filter.
+                                if !home.tags.isEmpty && !NowPlayingView.isMac { tags(home.tags) }
                                 if !model.visiblePlaylists.isEmpty { playlists }
-                                if !home.tracks.isEmpty { songs(home.tracks.map(\.track)) }
+                                if !home.tracks.isEmpty { songs(home.tracks.map(\.track), columnWidth: columnWidth) }
                             } else if let error = model.error {
                                 EmptyState {
                                     Label(Strings.homeLoadFailed, systemImage: "wifi.exclamationmark")
@@ -80,6 +85,14 @@ struct HomeView: View {
                         }
                     }
                     .padding(.bottom, 24)
+                }
+                // The page width, read on appear and on every resize.
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { pageWidth = proxy.size.width }
+                            .onValueChange(of: proxy.size.width) { pageWidth = $0 }
+                    }
                 }
                 .navigationTitle(Strings.home)
                 .toolbar {
@@ -153,10 +166,11 @@ struct HomeView: View {
             }
             .shelfScrollBehavior()
             .scrollIndicators(.hidden)
+            .shelfPager(ids: model.visiblePlaylists.map(\.id), perPage: shelfCount(itemWidth: 170, spacing: 14), artworkHeight: 170)
         }
     }
 
-    private func songs(_ tracks: [Track]) -> some View {
+    private func songs(_ tracks: [Track], columnWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: Strings.recommendedSongs) {
                 Button(Strings.play, systemImage: "play.fill") {
@@ -172,7 +186,7 @@ struct HomeView: View {
                     WithPerceptionTracking {
                         ForEach(tracks) { track in
                             WithPerceptionTracking {
-                                TrackRow(track: track).frame(width: 300)
+                                TrackRow(track: track).frame(width: columnWidth)
                             }
                         }
                     }
@@ -182,7 +196,23 @@ struct HomeView: View {
             }
             .shelfScrollBehavior()
             .scrollIndicators(.hidden)
+            .shelfPager(ids: tracks.map(\.id), perPage: 4 * shelfCount(itemWidth: columnWidth, spacing: 16))
         }
+    }
+
+    /// Columns at least 280 wide that fill the page between its 20-point
+    /// margins, so the last visible column is never cut off; on iPhone one
+    /// column with the next peeking in, as before.
+    private var songColumnWidth: CGFloat {
+        let available = pageWidth - 40
+        guard available > 600 else { return 300 }
+        let columns = ((available + 16) / (280 + 16)).rounded(.down)
+        return (available - 16 * (columns - 1)) / columns
+    }
+
+    /// How many whole items of a shelf fit between the page margins.
+    private func shelfCount(itemWidth: CGFloat, spacing: CGFloat) -> Int {
+        max(1, Int(((pageWidth - 40 + spacing) / (itemWidth + spacing)).rounded(.down)))
     }
 
     private var recent: some View {
@@ -211,9 +241,12 @@ struct HomeView: View {
                         }
                     }
                 }
+                .shelfScrollTargets()
                 .padding(.horizontal, 20)
             }
+            .shelfScrollBehavior()
             .scrollIndicators(.hidden)
+            .shelfPager(ids: app.recent.map(\.id), perPage: shelfCount(itemWidth: 130, spacing: 14), artworkHeight: 130)
         }
     }
 }

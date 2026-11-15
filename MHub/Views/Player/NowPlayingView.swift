@@ -63,6 +63,19 @@ struct NowPlayingView: View {
             .sheet(isPresented: Perception.Bindable(app).showsDisplaySettings.tracked) { DisplaySettingsView().appEnvironment(app, player) }
             .environment(\.colorScheme, .dark)
             .statusBarHidden(false)
+            .onAppear {
+                if let requested = app.playerPane {
+                    pane = requested
+                    app.playerPane = nil
+                }
+            }
+            // Esc closes the player on Mac, as the chevron does.
+            .background {
+                Button("") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -121,6 +134,7 @@ struct NowPlayingView: View {
                     if pane == .lyrics {
                         LyricsPane(anchorFraction: 0.3)
                             .environment(\.lyricScale, 1.3)
+                            .padding(.top, 56)
                             .padding(.trailing, 40)
                     } else {
                         QueuePane().padding(.top, 64).padding(.trailing, 12)

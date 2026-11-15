@@ -86,6 +86,8 @@ final class AppModel {
     var libraryPath = NavigationPath()
     /// The player's「歌词与外观」sheet.
     var showsDisplaySettings = false
+    /// The panel the full player opens on (the Mac bar's lyrics and queue buttons).
+    var playerPane: NowPlayingView.Pane?
     /// The player's lyric sharing sheet, with a long-pressed line preselected.
     var lyricShare: LyricShareRequest?
     private var toastID = 0

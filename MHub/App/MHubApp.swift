@@ -25,6 +25,9 @@ struct MHubApp: App {
                     .preferredColorScheme(app.settings.appearance.colorScheme)
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .commands { PlaybackCommands(player: player) }
+        #endif
     }
 }
 
@@ -91,6 +94,13 @@ struct MainTabs: View {
     var playerTransition: Namespace.ID
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        if #available(macCatalyst 18.0, *) {
+            mac
+        } else {
+            legacy
+        }
+        #else
         if #available(iOS 26.0, macCatalyst 26.0, *) {
             modern
                 .tabBarMinimizeBehavior(.onScrollDown)
@@ -101,16 +111,35 @@ struct MainTabs: View {
         } else if #available(iOS 18.0, macCatalyst 18.0, *) {
             modern
         } else {
-            TabView(selection: $selection) {
-                HomeView().modifier(LegacyMiniPlayerInset())
-                    .tabItem { Label(Strings.home, systemImage: "house.fill") }.tag(AppTab.home)
-                LibraryView().modifier(LegacyMiniPlayerInset())
-                    .tabItem { Label(Strings.library, systemImage: "square.stack.fill") }.tag(AppTab.library)
-                SearchView().modifier(LegacyMiniPlayerInset())
-                    .tabItem { Label(Strings.search, systemImage: "magnifyingglass") }.tag(AppTab.search)
-            }
+            legacy
+        }
+        #endif
+    }
+
+    private var legacy: some View {
+        TabView(selection: $selection) {
+            HomeView().modifier(LegacyMiniPlayerInset())
+                .tabItem { Label(Strings.home, systemImage: "house.fill") }.tag(AppTab.home)
+            LibraryView().modifier(LegacyMiniPlayerInset())
+                .tabItem { Label(Strings.library, systemImage: "square.stack.fill") }.tag(AppTab.library)
+            SearchView().modifier(LegacyMiniPlayerInset())
+                .tabItem { Label(Strings.search, systemImage: "magnifyingglass") }.tag(AppTab.search)
         }
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Mac: the tabs as a sidebar (Apple Music's layout) and a full player
+    /// bar under every page instead of the iPad's top tab bar and accessory.
+    @available(macCatalyst 18.0, *)
+    private var mac: some View {
+        TabView(selection: $selection) {
+            Tab(Strings.home, systemImage: "house", value: AppTab.home) { HomeView().modifier(MacPlayerBarInset()) }
+            Tab(Strings.library, systemImage: "square.stack", value: AppTab.library) { LibraryView().modifier(MacPlayerBarInset()) }
+            Tab(Strings.search, systemImage: "magnifyingglass", value: AppTab.search) { SearchView().modifier(MacPlayerBarInset()) }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+    }
+    #endif
 
     @available(iOS 18.0, macCatalyst 18.0, *)
     private var modern: some View {

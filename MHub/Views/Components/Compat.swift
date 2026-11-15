@@ -77,6 +77,13 @@ struct LegacyMiniPlayerInset: ViewModifier {
     }
 }
 
+/// Mac: the player bar floats over the bottom of each page, which scrolls under it.
+struct MacPlayerBarInset: ViewModifier {
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) { MacPlayerBar() }
+    }
+}
+
 // iOS 16 support: stand-ins for iOS 17 views and modifiers.
 
 /// `ContentUnavailableView` on iOS 17+, the same layout drawn by hand before.
@@ -193,5 +200,79 @@ extension Binding {
         let value = wrappedValue
         let binding = self
         return Binding(get: { value }, set: { binding.wrappedValue = $0 })
+    }
+}
+
+extension View {
+    /// Mac: left and right page buttons over a horizontal shelf, shown while
+    /// the pointer is over it, as in Apple Music. A mouse wheel cannot scroll
+    /// a shelf sideways and Catalyst has no drag to scroll, so without them
+    /// only a trackpad could reach the rest. Elsewhere, and before 17, nothing.
+    /// `ids` are the shelf's `ForEach` ids in order; `perPage` how many fit;
+    /// `artworkHeight` centres the buttons on the artwork rather than on the
+    /// artwork and its captions together.
+    @ViewBuilder
+    func shelfPager(ids: [String], perPage: Int, artworkHeight: CGFloat? = nil) -> some View {
+        #if targetEnvironment(macCatalyst)
+        if #available(macCatalyst 17.0, *) {
+            modifier(ShelfPager(ids: ids, perPage: max(1, perPage), artworkHeight: artworkHeight))
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+@available(iOS 17.0, macCatalyst 17.0, *)
+private struct ShelfPager: ViewModifier {
+    var ids: [String]
+    var perPage: Int
+    var artworkHeight: CGFloat?
+    /// The item at the shelf's leading edge, kept current while it scrolls.
+    @State private var position: String?
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        let index = position.flatMap { ids.firstIndex(of: $0) } ?? 0
+        content
+            .scrollPosition(id: $position)
+            .overlay(alignment: artworkHeight == nil ? .leading : .topLeading) {
+                if hovering && index > 0 {
+                    arrow("chevron.left", label: "上一页") { page(from: index, by: -perPage) }
+                }
+            }
+            .overlay(alignment: artworkHeight == nil ? .trailing : .topTrailing) {
+                if hovering && index + perPage < ids.count {
+                    arrow("chevron.right", label: "下一页") { page(from: index, by: perPage) }
+                }
+            }
+            .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+    }
+
+    private func page(from index: Int, by step: Int) {
+        guard !ids.isEmpty else { return }
+        // The last page ends on the last item instead of leaving a gap.
+        let target = min(max(0, index + step), max(0, ids.count - perPage))
+        withAnimation(.smooth(duration: 0.4)) { position = ids[target] }
+    }
+
+    /// Apple Music's shelf button: a tall glass capsule with a thin chevron.
+    private func arrow(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 56)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .glass(.tintedInteractive(.black.opacity(0.25)), in: .capsule)
+        .padding(.horizontal, 6)
+        .padding(.top, artworkHeight.map { max(0, $0 / 2 - 28) } ?? 0)
+        .accessibilityLabel(label)
+        .help(label)
+        .transition(.opacity)
     }
 }
