@@ -34,6 +34,7 @@ struct SearchView: View {
                 }
                 .listStyle(.plain)
                 .navigationTitle(Strings.search)
+                .padTabBar()
                 .toolbar { SettingsToolbarButton() }
                 .searchable(text: Perception.Bindable(app).searchQuery.tracked, placement: .navigationBarDrawer(displayMode: .always),
                             prompt: Strings.searchPrompt)

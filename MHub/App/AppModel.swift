@@ -88,6 +88,8 @@ final class AppModel {
     var showsDisplaySettings = false
     /// The panel the full player opens on (the Mac bar's lyrics and queue buttons).
     var playerPane: NowPlayingView.Pane?
+    /// iPadOS 16–17: the sidebar is out instead of the floating tab bar.
+    var padSidebarShown = false
     /// The player's lyric sharing sheet, with a long-pressed line preselected.
     var lyricShare: LyricShareRequest?
     private var toastID = 0

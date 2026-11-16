@@ -16,6 +16,8 @@ enum Strings {
     static let homeLoadFailed = "推荐加载失败"
     static let retry = "重试"
     static let settings = "设置"
+    static let showSidebar = "显示边栏"
+    static let hideSidebar = "隐藏边栏"
     // Search
     static let searchPrompt = "歌曲、艺人"
     static let searchEmpty = "没有找到相关歌曲"

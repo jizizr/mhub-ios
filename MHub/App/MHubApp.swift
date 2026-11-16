@@ -30,7 +30,25 @@ struct MHubApp: App {
     }
 }
 
-enum AppTab: Hashable { case home, library, search }
+enum AppTab: Hashable, CaseIterable {
+    case home, library, search
+
+    var title: String {
+        switch self {
+        case .home: Strings.home
+        case .library: Strings.library
+        case .search: Strings.search
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .home: "house"
+        case .library: "square.stack"
+        case .search: "magnifyingglass"
+        }
+    }
+}
 
 /// Songs waiting for the "添加到歌单" sheet.
 struct PendingTracks: Identifiable {
@@ -107,7 +125,7 @@ struct MainTabs: View {
             if #available(iOS 18.0, *) {
                 sidebarTabs
             } else {
-                PadSidebar(selection: $selection)
+                PadSidebar()
             }
         } else if #available(iOS 26.0, macCatalyst 26.0, *) {
             modern
@@ -157,24 +175,31 @@ struct MainTabs: View {
     }
 }
 
-/// iPadOS 16–17 (no adaptable `TabView`): a fixed sidebar beside the page,
-/// as Apple Music on iPad. Not a `NavigationSplitView`: each page has its
-/// own `NavigationStack`, and inside a split view their toolbars merge into
-/// one bar and the columns overflow the screen. All three pages stay alive
-/// behind the visible one, so each keeps its scroll position and navigation.
+/// iPadOS 16–17 (no adaptable `TabView`): the iPadOS 18 layout drawn by
+/// hand. By default a floating tab bar sits in each page's navigation bar
+/// (`PadTabBar`); its sidebar button slides a sidebar in beside the page, and
+/// the sidebar's own button folds it back into the tab bar.
+///
+/// Not a `NavigationSplitView`: each page has its own `NavigationStack`, and
+/// inside a split view their toolbars merge into one bar and the columns
+/// overflow the screen. All three pages stay alive behind the visible one,
+/// so each keeps its scroll position and navigation.
 struct PadSidebar: View {
-    @Binding var selection: AppTab
+    @Environment(AppModel.self) private var app
 
     var body: some View {
         WithPerceptionTracking {
             HStack(spacing: 0) {
-                sidebar
-                Divider().ignoresSafeArea()
+                if app.padSidebarShown {
+                    sidebar.transition(.move(edge: .leading))
+                    Divider().ignoresSafeArea()
+                }
                 ZStack {
                     page(.home) { HomeView() }
                     page(.library) { LibraryView() }
                     page(.search) { SearchView() }
                 }
+                .environment(\.usesPadTabBar, true)
                 .modifier(WidePlayerBarInset())
                 .frame(maxWidth: .infinity)
             }
@@ -183,25 +208,32 @@ struct PadSidebar: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(Strings.appName)
-                .font(.title2.bold())
-                .padding(.horizontal, 12)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
-            row(.home, Strings.home, "house")
-            row(.library, Strings.library, "square.stack")
-            row(.search, Strings.search, "magnifyingglass")
+            HStack {
+                Text(Strings.appName).font(.title2.bold())
+                Spacer()
+                Button(Strings.hideSidebar, systemImage: "sidebar.left") {
+                    withAnimation(.snappy(duration: 0.3)) { app.padSidebarShown = false }
+                }
+                .labelStyle(.iconOnly)
+                .font(.title3)
+            }
+            .padding(.leading, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                WithPerceptionTracking { row(tab) }
+            }
             Spacer()
         }
         .padding(.horizontal, 10)
-        .frame(width: 240)
+        .frame(width: 260)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
     }
 
-    private func row(_ tab: AppTab, _ title: String, _ symbol: String) -> some View {
-        let selected = selection == tab
-        return Button { selection = tab } label: {
-            Label(title, systemImage: symbol)
+    private func row(_ tab: AppTab) -> some View {
+        let selected = app.tab == tab
+        return Button { app.tab = tab } label: {
+            Label(tab.title, systemImage: tab.symbol)
                 .font(.body.weight(selected ? .semibold : .regular))
                 .foregroundStyle(selected ? Color.accentColor : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -215,11 +247,85 @@ struct PadSidebar: View {
     }
 
     private func page(_ tab: AppTab, @ViewBuilder content: () -> some View) -> some View {
-        let shown = selection == tab
+        let shown = app.tab == tab
         return content()
             .opacity(shown ? 1 : 0)
             .allowsHitTesting(shown)
             .accessibilityHidden(!shown)
+    }
+}
+
+/// The iPadOS 18 floating tab bar for iPadOS 16–17: a capsule in the middle
+/// of the navigation bar with the sidebar button and the three tabs.
+struct PadTabBar: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        WithPerceptionTracking {
+            HStack(spacing: 2) {
+                Button {
+                    withAnimation(.snappy(duration: 0.3)) { app.padSidebarShown = true }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .font(.body.weight(.medium))
+                        .frame(width: 40, height: 32)
+                        .contentShape(.rect)
+                }
+                .accessibilityLabel(Strings.showSidebar)
+                ForEach(AppTab.allCases, id: \.self) { tab in
+                    WithPerceptionTracking {
+                        let selected = app.tab == tab
+                        Button { app.tab = tab } label: {
+                            Text(tab.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(selected ? Color.accentColor : .primary)
+                                .padding(.horizontal, 14)
+                                .frame(height: 32)
+                                .background(selected ? Color.primary.opacity(0.09) : .clear, in: .capsule)
+                                .contentShape(.capsule)
+                        }
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(3)
+            .glass(.regular, in: .capsule)
+        }
+    }
+}
+
+private struct UsesPadTabBarKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True inside `PadSidebar`: root pages put `PadTabBar` in their navigation bar.
+    var usesPadTabBar: Bool {
+        get { self[UsesPadTabBarKey.self] }
+        set { self[UsesPadTabBarKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The iPadOS 16–17 floating tab bar in a root page's navigation bar,
+    /// while the sidebar is folded away. Nothing elsewhere.
+    func padTabBar() -> some View { modifier(PadTabBarToolbar()) }
+}
+
+private struct PadTabBarToolbar: ViewModifier {
+    @Environment(\.usesPadTabBar) private var uses
+    @Environment(AppModel.self) private var app
+
+    func body(content: Content) -> some View {
+        WithPerceptionTracking {
+            let shows = uses && !app.padSidebarShown
+            content.toolbar {
+                if shows {
+                    ToolbarItem(placement: .principal) { PadTabBar() }
+                }
+            }
+        }
     }
 }
 

@@ -87,6 +87,7 @@ struct HomeView: View {
                     }
                 }
                 .navigationTitle(Strings.home)
+                .padTabBar()
                 .toolbar {
                     WithPerceptionTracking {
                         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -169,12 +170,12 @@ struct HomeView: View {
         }
     }
 
-    /// Columns at least 260 wide that fill the page between its 20-point
+    /// Columns at least 250 wide that fill the page between its 20-point
     /// margins, so the last visible column is never cut off; where not even
     /// two fit (iPhone), one 300-wide column with the next peeking in.
     private var songColumnWidth: CGFloat {
         let available = pageWidth - 40
-        let columns = ((available + 16) / (260 + 16)).rounded(.down)
+        let columns = ((available + 16) / (250 + 16)).rounded(.down)
         guard columns >= 2 else { return 300 }
         return (available - 16 * (columns - 1)) / columns
     }
