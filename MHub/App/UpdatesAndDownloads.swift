@@ -44,10 +44,17 @@ final class UpdateManager {
         }
     }
 
+    /// The release asset this platform installs: the Mac zip or the iOS IPA.
+    #if targetEnvironment(macCatalyst)
+    private static let assetSuffix = "-mac.zip"
+    #else
+    private static let assetSuffix = ".ipa"
+    #endif
+
     private func find() async throws -> AvailableUpdate? {
         let releases = try await UpdateCheck.fetch(repository: Self.repository)
         defaults.set(Date.now.timeIntervalSince1970, forKey: "update_checked_at")
-        return UpdateCheck.newer(releases, current: Self.currentVersion, assetSuffix: ".ipa")
+        return UpdateCheck.newer(releases, current: Self.currentVersion, assetSuffix: Self.assetSuffix)
     }
 
     func later(_ update: AvailableUpdate) {
