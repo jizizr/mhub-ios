@@ -15,7 +15,6 @@ final class HomeModel {
     var home: RecommendationHome?
     var loading = false
     var error: String?
-    var selectedTag: String?
     private var seen: [String] = []
 
     func load(client: MHubClient?, refresh: Bool = false) async {
@@ -28,19 +27,14 @@ final class HomeModel {
             withAnimation(.smooth) {
                 home = result
                 error = nil
-                if let tag = selectedTag, !result.tags.contains(where: { $0.id == tag }) { selectedTag = nil }
             }
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    var visiblePlaylists: [RecommendationPlaylist] {
-        guard let home else { return [] }
-        guard let tag = home.tags.first(where: { $0.id == selectedTag }) else { return home.playlists }
-        let ids = Set(tag.playlistIDs)
-        return home.playlists.filter { ids.contains($0.id) }
-    }
+    /// Every recommended playlist; the server's mood tags are not shown.
+    var visiblePlaylists: [RecommendationPlaylist] { home?.playlists ?? [] }
 }
 
 struct HomeView: View {
@@ -59,8 +53,6 @@ struct HomeView: View {
                     LazyVStack(alignment: .leading, spacing: 30) {
                         WithPerceptionTracking {
                             if let home = model.home {
-                                // Mac shows every recommended playlist, without the tag filter.
-                                if !home.tags.isEmpty && !NowPlayingView.isMac { tags(home.tags) }
                                 if !model.visiblePlaylists.isEmpty { playlists }
                                 if !home.tracks.isEmpty { songs(home.tracks.map(\.track), columnWidth: columnWidth) }
                             } else if let error = model.error {
@@ -115,28 +107,6 @@ struct HomeView: View {
         }
     }
 
-    private func tags(_ tags: [RecommendationTag]) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(tags) { tag in
-                    WithPerceptionTracking {
-                        let selected = model.selectedTag == tag.id
-                        let button = Button {
-                            withAnimation(.snappy) { model.selectedTag = selected ? nil : tag.id }
-                        } label: {
-                            WithPerceptionTracking {
-                                Text(tag.label).font(.subheadline.weight(.semibold))
-                            }
-                        }
-                        button.glassButton(prominent: selected)
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-        .scrollIndicators(.hidden)
-    }
-
     private var playlists: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: Strings.recommendedPlaylists)
@@ -174,9 +144,8 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: Strings.recommendedSongs) {
                 Button(Strings.play, systemImage: "play.fill") {
-                    let tag = model.home?.tags.first { $0.id == model.selectedTag }
                     player.play(tracks, source: QueueSource(type: QueueSource.recommendation,
-                                                            name: Strings.casualListening(tag?.label ?? Strings.madeForYou)))
+                                                            name: Strings.casualListening(Strings.madeForYou)))
                 }
                     .labelStyle(.iconOnly)
                     .glassButton()
