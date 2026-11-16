@@ -25,9 +25,8 @@ struct MHubApp: App {
                     .preferredColorScheme(app.settings.appearance.colorScheme)
             }
         }
-        #if targetEnvironment(macCatalyst)
+        // The「控制」menu on Mac; shortcuts with a hardware keyboard on iPad.
         .commands { PlaybackCommands(player: player) }
-        #endif
     }
 }
 
@@ -87,21 +86,30 @@ struct RootView: View {
     }
 }
 
-/// Home, library and search. iOS 18+ uses `Tab` (the search role, and on
-/// iOS 26 the tab bar accessory mini player); iOS 16–17 the older `tabItem`.
+/// Home, library and search. iPhone: iOS 18+ uses `Tab` (the search role,
+/// and on iOS 26 the tab bar accessory mini player); iOS 16–17 the older
+/// `tabItem`. Mac and iPad at regular width: a sidebar and the floating
+/// player bar, like Apple Music.
 struct MainTabs: View {
     @Binding var selection: AppTab
     var playerTransition: Namespace.ID
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         #if targetEnvironment(macCatalyst)
         if #available(macCatalyst 18.0, *) {
-            mac
+            sidebarTabs
         } else {
             legacy
         }
         #else
-        if #available(iOS 26.0, macCatalyst 26.0, *) {
+        if UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular {
+            if #available(iOS 18.0, *) {
+                sidebarTabs
+            } else {
+                PadSidebar(selection: $selection)
+            }
+        } else if #available(iOS 26.0, macCatalyst 26.0, *) {
             modern
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .tabViewBottomAccessory {
@@ -127,19 +135,17 @@ struct MainTabs: View {
         }
     }
 
-    #if targetEnvironment(macCatalyst)
-    /// Mac: the tabs as a sidebar (Apple Music's layout) and a full player
-    /// bar under every page instead of the iPad's top tab bar and accessory.
-    @available(macCatalyst 18.0, *)
-    private var mac: some View {
+    /// Mac and iPad: the tabs as a sidebar (Apple Music's layout) and the
+    /// floating player bar under every page instead of the tab bar accessory.
+    @available(iOS 18.0, macCatalyst 18.0, *)
+    private var sidebarTabs: some View {
         TabView(selection: $selection) {
-            Tab(Strings.home, systemImage: "house", value: AppTab.home) { HomeView().modifier(MacPlayerBarInset()) }
-            Tab(Strings.library, systemImage: "square.stack", value: AppTab.library) { LibraryView().modifier(MacPlayerBarInset()) }
-            Tab(Strings.search, systemImage: "magnifyingglass", value: AppTab.search) { SearchView().modifier(MacPlayerBarInset()) }
+            Tab(Strings.home, systemImage: "house", value: AppTab.home) { HomeView().modifier(WidePlayerBarInset()) }
+            Tab(Strings.library, systemImage: "square.stack", value: AppTab.library) { LibraryView().modifier(WidePlayerBarInset()) }
+            Tab(Strings.search, systemImage: "magnifyingglass", value: AppTab.search) { SearchView().modifier(WidePlayerBarInset()) }
         }
         .tabViewStyle(.sidebarAdaptable)
     }
-    #endif
 
     @available(iOS 18.0, macCatalyst 18.0, *)
     private var modern: some View {
@@ -148,6 +154,42 @@ struct MainTabs: View {
             Tab(Strings.library, systemImage: "square.stack.fill", value: AppTab.library) { LibraryView().modifier(LegacyMiniPlayerInset()) }
             Tab(Strings.search, systemImage: "magnifyingglass", value: AppTab.search, role: .search) { SearchView().modifier(LegacyMiniPlayerInset()) }
         }
+    }
+}
+
+/// iPadOS 16–17 (no adaptable `TabView`): the same sidebar drawn with a
+/// split view. All three pages stay alive behind the visible one, so each
+/// keeps its scroll position and navigation like a tab does.
+struct PadSidebar: View {
+    @Binding var selection: AppTab
+
+    var body: some View {
+        WithPerceptionTracking {
+            NavigationSplitView {
+                List(selection: Binding(get: { Optional(selection) }, set: { if let tab = $0 { selection = tab } })) {
+                    Label(Strings.home, systemImage: "house").tag(AppTab.home)
+                    Label(Strings.library, systemImage: "square.stack").tag(AppTab.library)
+                    Label(Strings.search, systemImage: "magnifyingglass").tag(AppTab.search)
+                }
+                .navigationTitle(Strings.appName)
+            } detail: {
+                ZStack {
+                    page(.home) { HomeView() }
+                    page(.library) { LibraryView() }
+                    page(.search) { SearchView() }
+                }
+                .modifier(WidePlayerBarInset())
+            }
+            .navigationSplitViewStyle(.balanced)
+        }
+    }
+
+    private func page(_ tab: AppTab, @ViewBuilder content: () -> some View) -> some View {
+        let shown = selection == tab
+        return content()
+            .opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
     }
 }
 

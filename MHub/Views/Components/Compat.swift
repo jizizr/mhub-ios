@@ -77,10 +77,27 @@ struct LegacyMiniPlayerInset: ViewModifier {
     }
 }
 
-/// Mac: the player bar floats over the bottom of each page, which scrolls under it.
-struct MacPlayerBarInset: ViewModifier {
+/// Mac and iPad: the player bar floats over the bottom of each page, which
+/// scrolls under it. A compact iPad window (Slide Over, a narrow split) has
+/// no room for it and shows the mini player bar instead.
+struct WidePlayerBarInset: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) { MacPlayerBar() }
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if sizeClass == .compact {
+                WithPerceptionTracking {
+                    MiniPlayer()
+                        .frame(height: 56)
+                        .glass(.regular, in: .rect(cornerRadius: 16))
+                        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 6)
+                }
+            } else {
+                WidePlayerBar()
+            }
+        }
     }
 }
 
@@ -204,24 +221,20 @@ extension Binding {
 }
 
 extension View {
-    /// Mac: left and right page buttons over a horizontal shelf, shown while
-    /// the pointer is over it, as in Apple Music. A mouse wheel cannot scroll
-    /// a shelf sideways and Catalyst has no drag to scroll, so without them
-    /// only a trackpad could reach the rest. Elsewhere, and before 17, nothing.
+    /// Left and right page buttons over a horizontal shelf, shown while a
+    /// pointer (Mac, or iPad with a mouse or trackpad) is over it, as in Apple
+    /// Music. A mouse wheel cannot scroll a shelf sideways and Catalyst has no
+    /// drag to scroll. Touch never hovers, so it never sees them. iOS 17+.
     /// `ids` are the shelf's `ForEach` ids in order; `perPage` how many fit;
     /// `artworkHeight` centres the buttons on the artwork rather than on the
     /// artwork and its captions together.
     @ViewBuilder
     func shelfPager(ids: [String], perPage: Int, artworkHeight: CGFloat? = nil) -> some View {
-        #if targetEnvironment(macCatalyst)
-        if #available(macCatalyst 17.0, *) {
+        if #available(iOS 17.0, macCatalyst 17.0, *) {
             modifier(ShelfPager(ids: ids, perPage: max(1, perPage), artworkHeight: artworkHeight))
         } else {
             self
         }
-        #else
-        self
-        #endif
     }
 }
 

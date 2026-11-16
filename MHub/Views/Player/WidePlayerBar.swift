@@ -2,13 +2,13 @@ import MHubKit
 import Perception
 import SwiftUI
 
-/// The Mac window's player bar, floating over the bottom of the page like
-/// Apple Music's on macOS 26: a Liquid Glass capsule at most 600 points wide,
+/// The player bar of the Mac window and of iPad at regular width, floating
+/// over the bottom of the page like Apple Music's on macOS 26: a Liquid Glass capsule at most 600 points wide,
 /// centred, with transport on the left, the song (and a hairline seek bar
 /// along its bottom edge) in the middle, and the menu, lyrics, queue and
 /// volume on the right. Clicking the song opens the full player; the lyrics
 /// and queue buttons open it on that panel.
-struct MacPlayerBar: View {
+struct WidePlayerBar: View {
     @Environment(PlayerController.self) private var player
     @Environment(AppModel.self) private var app
     @State private var showsVolume = false
