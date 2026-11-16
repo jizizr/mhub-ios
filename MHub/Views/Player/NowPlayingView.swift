@@ -101,7 +101,13 @@ struct NowPlayingView: View {
             VolumeControl().padding(.bottom, 10)
             bottomBar.padding(.bottom, 6)
         }
+        // iPad in portrait and other tall, wide windows: one centred column
+        // (as in Apple Music) instead of lyrics and controls spanning the screen.
+        .frame(maxWidth: Self.narrowMaxWidth)
+        .frame(maxWidth: .infinity)
     }
+
+    static let narrowMaxWidth: CGFloat = 560
 
     static let wideWidth: CGFloat = 820
 
