@@ -157,31 +157,61 @@ struct MainTabs: View {
     }
 }
 
-/// iPadOS 16–17 (no adaptable `TabView`): the same sidebar drawn with a
-/// split view. All three pages stay alive behind the visible one, so each
-/// keeps its scroll position and navigation like a tab does.
+/// iPadOS 16–17 (no adaptable `TabView`): a fixed sidebar beside the page,
+/// as Apple Music on iPad. Not a `NavigationSplitView`: each page has its
+/// own `NavigationStack`, and inside a split view their toolbars merge into
+/// one bar and the columns overflow the screen. All three pages stay alive
+/// behind the visible one, so each keeps its scroll position and navigation.
 struct PadSidebar: View {
     @Binding var selection: AppTab
 
     var body: some View {
         WithPerceptionTracking {
-            NavigationSplitView {
-                List(selection: Binding(get: { Optional(selection) }, set: { if let tab = $0 { selection = tab } })) {
-                    Label(Strings.home, systemImage: "house").tag(AppTab.home)
-                    Label(Strings.library, systemImage: "square.stack").tag(AppTab.library)
-                    Label(Strings.search, systemImage: "magnifyingglass").tag(AppTab.search)
-                }
-                .navigationTitle(Strings.appName)
-            } detail: {
+            HStack(spacing: 0) {
+                sidebar
+                Divider().ignoresSafeArea()
                 ZStack {
                     page(.home) { HomeView() }
                     page(.library) { LibraryView() }
                     page(.search) { SearchView() }
                 }
                 .modifier(WidePlayerBarInset())
+                .frame(maxWidth: .infinity)
             }
-            .navigationSplitViewStyle(.balanced)
         }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(Strings.appName)
+                .font(.title2.bold())
+                .padding(.horizontal, 12)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+            row(.home, Strings.home, "house")
+            row(.library, Strings.library, "square.stack")
+            row(.search, Strings.search, "magnifyingglass")
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 240)
+        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
+    }
+
+    private func row(_ tab: AppTab, _ title: String, _ symbol: String) -> some View {
+        let selected = selection == tab
+        return Button { selection = tab } label: {
+            Label(title, systemImage: symbol)
+                .font(.body.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.accentColor : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .frame(height: 42)
+                .background(selected ? Color.primary.opacity(0.08) : .clear, in: .rect(cornerRadius: 10))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func page(_ tab: AppTab, @ViewBuilder content: () -> some View) -> some View {
