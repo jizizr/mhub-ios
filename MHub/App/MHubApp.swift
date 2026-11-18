@@ -106,8 +106,8 @@ struct RootView: View {
 
 /// Home, library and search. iPhone: iOS 18+ uses `Tab` (the search role,
 /// and on iOS 26 the tab bar accessory mini player); iOS 16–17 the older
-/// `tabItem`. Mac and iPad at regular width: a sidebar and the floating
-/// player bar, like Apple Music.
+/// `tabItem`. Any regular-width window (Mac, iPad, an unfolded iPhone Duo):
+/// a sidebar and the floating player bar, like Apple Music.
 struct MainTabs: View {
     @Binding var selection: AppTab
     var playerTransition: Namespace.ID
@@ -121,7 +121,7 @@ struct MainTabs: View {
             legacy
         }
         #else
-        if UIDevice.current.userInterfaceIdiom == .pad && sizeClass == .regular {
+        if sizeClass == .regular {
             if #available(iOS 18.0, *) {
                 sidebarTabs
             } else {
