@@ -16,7 +16,14 @@ struct LyricsShareView: View {
     @State private var selected: Set<Int> = []
     @State private var image: ShareImage?
     @State private var cardHeight: CGFloat = 0
-    static let previewHeight: CGFloat = 260
+    @State private var pageHeight: CGFloat = 0
+    static let maxPreviewHeight: CGFloat = 260
+
+    /// At most 260 pt, and never more than 40% of the page, so a short sheet
+    /// (a small Mac window) still leaves room for the list.
+    private var previewHeight: CGFloat {
+        pageHeight > 0 ? min(Self.maxPreviewHeight, max(120, pageHeight * 0.4)) : Self.maxPreviewHeight
+    }
 
     private var lines: [LyricLine] {
         player.lyrics.lines.filter { !$0.isBackground && !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -32,8 +39,8 @@ struct LyricsShareView: View {
                 card
                     .fixedSize(horizontal: false, vertical: true)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
-                    .scaleEffect(cardHeight > Self.previewHeight ? Self.previewHeight / cardHeight : 1, anchor: .top)
-                    .frame(height: Self.previewHeight, alignment: .top)
+                    .scaleEffect(cardHeight > previewHeight ? previewHeight / cardHeight : 1, anchor: .top)
+                    .frame(height: previewHeight, alignment: .top)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                 Text(Strings.shareLyricsHint(Self.maxLines))
@@ -74,6 +81,7 @@ struct LyricsShareView: View {
                     }
                 }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
                 .navigationTitle(Strings.shareLyrics)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

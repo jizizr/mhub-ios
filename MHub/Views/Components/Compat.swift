@@ -208,6 +208,23 @@ extension View {
     }
 }
 
+extension View {
+    /// Mac: open the sheet at this size. Catalyst's default sheet is a small
+    /// form sheet that leaves a tall layout no room. iOS is unchanged.
+    @ViewBuilder
+    func macSheetSize(width: CGFloat, height: CGFloat) -> some View {
+        #if targetEnvironment(macCatalyst)
+        if #available(macCatalyst 18.0, *) {
+            frame(idealWidth: width, idealHeight: height).presentationSizing(.fitted)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
 extension Binding {
     /// Reads the value now, inside the view's perception tracking. On iOS 16
     /// SwiftUI reads a binding later (presenting a sheet, drawing a toggle),

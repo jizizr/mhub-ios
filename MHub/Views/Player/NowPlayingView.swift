@@ -59,7 +59,7 @@ struct NowPlayingView: View {
             // A background never changes the layout size, however large the image.
             .background { PlayerBackground(artwork: player.artwork, palette: player.palette) }
             // Sheets opened from the player's「…」menu and from a long-pressed lyric line.
-            .sheet(item: Perception.Bindable(app).lyricShare.tracked) { LyricsShareView(request: $0).appEnvironment(app, player) }
+            .sheet(item: Perception.Bindable(app).lyricShare.tracked) { LyricsShareView(request: $0).appEnvironment(app, player).macSheetSize(width: 520, height: 760) }
             .sheet(isPresented: Perception.Bindable(app).showsDisplaySettings.tracked) { DisplaySettingsView().appEnvironment(app, player) }
             .environment(\.colorScheme, .dark)
             .statusBarHidden(false)
