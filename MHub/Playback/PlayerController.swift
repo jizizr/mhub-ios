@@ -116,10 +116,11 @@ final class PlayerController {
         load()
     }
 
-    /// "播放" / "随机播放" on a list: replaces the queue.
-    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool? = nil, source: QueueSource? = nil) {
+    /// "播放" / "随机播放" on a list: replaces the queue. `keepStart` plays the
+    /// picked song first even with shuffle on (a song tapped in an album).
+    func play(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool? = nil, keepStart: Bool = false, source: QueueSource? = nil) {
         guard !tracks.isEmpty else { return }
-        queue.replace(with: tracks, startAt: index, shuffle: shuffle)
+        queue.replace(with: tracks, startAt: index, shuffle: shuffle, keepStart: keepStart)
         self.source = source
         resetAutoplayStation()
         load()

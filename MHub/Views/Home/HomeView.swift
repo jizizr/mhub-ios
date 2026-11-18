@@ -100,7 +100,7 @@ struct HomeView: View {
                     }
                 }
                 .refreshable { await model.load(client: app.client, refresh: true) }
-                .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
+                .catalogDestinations()
             }
             .task(id: app.settings.serverAddress) {
                 if model.home == nil { await model.load(client: app.client) }

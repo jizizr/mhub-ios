@@ -57,7 +57,7 @@ struct QueuePane: View {
                 Text(" · ").foregroundStyle(.white.opacity(0.7))
                 Button { open(source) } label: {
                     WithPerceptionTracking {
-                        Text(source.isRecommendation ? Strings.sourceRecommendation(source.name) : Strings.sourcePlaylist(source.name))
+                        Text(label(source))
                             .fontWeight(.semibold)
                             .lineLimit(1)
                     }
@@ -73,9 +73,21 @@ struct QueuePane: View {
         .font(.subheadline)
     }
 
+    private func label(_ source: QueueSource) -> String {
+        switch source.type {
+        case QueueSource.recommendation: Strings.sourceRecommendation(source.name)
+        case QueueSource.album: Strings.sourceAlbum(source.name)
+        case QueueSource.artist: Strings.sourceArtist(source.name)
+        default: Strings.sourcePlaylist(source.name)
+        }
+    }
+
     /// Opens what the queue came from and closes the player, like the web source link.
     private func open(_ source: QueueSource) {
         switch source.type {
+        case QueueSource.album, QueueSource.artist:
+            app.open(CatalogRoute(kind: source.type == QueueSource.album ? .album : .artist, platform: source.platform,
+                                  id: source.id, title: source.name, cover: source.cover))
         case QueueSource.playlist:
             guard library.playlist(source.id) != nil else { return }
             app.libraryPath = NavigationPath([source.id])

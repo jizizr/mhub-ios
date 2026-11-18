@@ -24,7 +24,42 @@ import Testing
         let collection = try Fixtures.decode(Collection.self, "collection.json")
         #expect(collection.title == "热歌榜" && collection.items.count == 2)
         let platforms = try Fixtures.decode([PlatformInfo].self, "platforms.json")
-        #expect(platforms.map(\.id) == ["applemusic", "netease", "tencent"])
+        #expect(platforms.map(\.id) == ["applemusic", "netease", "tencent", "bilibili"])
+        #expect(platforms[0].hasAlbums && platforms[0].hasArtists)
+        #expect(platforms[2].hasAlbums && !platforms[2].hasArtists)
+        #expect(!platforms[3].hasAlbums)
+        // Servers before catalog search list no sections.
+        let old = try JSONDecoder().decode(PlatformInfo.self, from: Data(#"{"id":"netease","label":"网易云音乐"}"#.utf8))
+        #expect(old.catalog.isEmpty && !old.hasAlbums)
+    }
+
+    @Test func decodesCatalogSearchSections() throws {
+        let found = try Fixtures.decode(CatalogSearch.self, "catalog-search.json")
+        #expect(found.visibleSections == [.top, .artists, .albums, .songs, .playlists])
+        #expect(found.top.map(\.type) == [CatalogItem.artist, CatalogItem.song])
+        let song = found.songs[0].track
+        #expect(song.id == "applemusic:536115195" && song.album == "七里香" && song.durationMs == 297_200)
+        #expect(found.albums[0].cardSubtitle(withKind: false) == "2001 · 周杰伦")
+        #expect(found.albums[0].cardSubtitle(withKind: true) == "专辑 · 周杰伦")
+        #expect(found.playlists[0].url.hasPrefix("https://music.apple.com/"))
+        let songsOnly = try Fixtures.decode(CatalogSearch.self, "catalog-search-songs-only.json")
+        #expect(songsOnly.visibleSections.isEmpty && songsOnly.songs.count == 1)
+    }
+
+    @Test func decodesAlbumArtistAndTrackInfo() throws {
+        let album = try Fixtures.decode(AlbumDetail.self, "album.json")
+        #expect(album.artistID == "300117743")
+        #expect(album.discs.map(\.disc) == [1, 2])
+        #expect(album.discs[0].tracks.map(\.item.trackNumber) == [1, 2])
+        #expect(album.discs[1].tracks.map(\.index) == [2])
+        #expect(album.footer == ["2001年9月14日", "3 首歌曲，12 分钟", "℗ 2001 JVR MUSIC INTERNATIONAL LTD."])
+        let artist = try Fixtures.decode(ArtistDetail.self, "artist.json")
+        #expect(artist.topSongs.first?.track.album == "七里香")
+        #expect(artist.albums.count == 1 && artist.singles.count == 1)
+        let info = try Fixtures.decode(TrackInfo.self, "track-info.json")
+        #expect(info.albumID == "003DFRzD192KKD" && info.artistID.isEmpty)
+        #expect(AlbumDetail.releaseText("2004") == "2004年")
+        #expect(AlbumDetail.summary([]) == "")
     }
 
     @Test func progressiveStreamingIsPlayable() throws {

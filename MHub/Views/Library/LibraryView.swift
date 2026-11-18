@@ -52,6 +52,7 @@ struct LibraryView: View {
                 .navigationTitle(Strings.library)
                 .padTabBar()
                 .navigationDestination(for: String.self) { PlaylistDetailView(playlistID: $0) }
+                .catalogDestinations()
                 .toolbar {
                     WithPerceptionTracking {
                         Menu {

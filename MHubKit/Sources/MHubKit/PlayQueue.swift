@@ -51,9 +51,10 @@ public struct PlayQueue: Codable, Sendable, Equatable {
 
     // MARK: Editing
 
-    /// "播放全部": replaces the queue. With shuffle on, a random song starts.
+    /// "播放全部": replaces the queue. With shuffle on, a random song starts,
+    /// unless `keepStart` (a song picked in an album) keeps it first.
     public mutating func replace(with tracks: [Track], startAt start: Int = 0, shuffle requested: Bool? = nil,
-                                 using rng: inout some RandomNumberGenerator) {
+                                 keepStart: Bool = false, using rng: inout some RandomNumberGenerator) {
         let wantsShuffle = requested ?? shuffled
         items = tracks.map(\.chosen).uniqued()
         original = nil
@@ -61,14 +62,14 @@ public struct PlayQueue: Codable, Sendable, Equatable {
         let startTrack = tracks.indices.contains(start) ? tracks[start] : items[0]
         index = position(of: startTrack) ?? 0
         if wantsShuffle {
-            shuffle(keeping: Int.random(in: 0..<items.count, using: &rng), using: &rng)
+            shuffle(keeping: keepStart ? index : Int.random(in: 0..<items.count, using: &rng), using: &rng)
             index = 0
         }
     }
 
-    public mutating func replace(with tracks: [Track], startAt start: Int = 0, shuffle: Bool? = nil) {
+    public mutating func replace(with tracks: [Track], startAt start: Int = 0, shuffle: Bool? = nil, keepStart: Bool = false) {
         var rng = SystemRandomNumberGenerator()
-        replace(with: tracks, startAt: start, shuffle: shuffle, using: &rng)
+        replace(with: tracks, startAt: start, shuffle: shuffle, keepStart: keepStart, using: &rng)
     }
 
     /// "立即播放": the song goes right after the current one and becomes current.

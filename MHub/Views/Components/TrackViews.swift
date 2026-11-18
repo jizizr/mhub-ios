@@ -30,21 +30,38 @@ struct ArtworkView: View {
     }
 }
 
-/// One song in a list. Tapping plays it now; the menu holds the other actions.
+/// One song in a list. Tapping plays it now (or runs `action`, as an album
+/// row playing its album does); the menu holds the other actions.
 struct TrackRow: View {
     @Environment(PlayerController.self) private var player
     var track: Track
     var playlistID: String?
     var showsArtwork = true
+    /// Album tracks show their number instead of the artwork.
+    var number: Int?
+    var showsArtist = true
+    var action: (() -> Void)?
 
     var body: some View {
         WithPerceptionTracking {
             Button {
-                player.playNow(track)
+                if let action { action() } else { player.playNow(track) }
             } label: {
                 WithPerceptionTracking {
                     HStack(spacing: 12) {
-                        if showsArtwork {
+                        if let number {
+                            ZStack {
+                                if player.current?.id == track.id {
+                                    Image(systemName: "waveform")
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(Color.accentColor)
+                                        .playingSymbolEffect(isActive: player.isPlaying)
+                                } else {
+                                    Text("\(number)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(width: 28)
+                        } else if showsArtwork {
                             ArtworkView(url: track.coverURL, cornerRadius: 5)
                                 .frame(width: 48, height: 48)
                                 .overlay {
@@ -56,7 +73,9 @@ struct TrackRow: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(track.title).font(.body).lineLimit(1)
                                 .foregroundStyle(player.current?.id == track.id ? Color.accentColor : .primary)
-                            Text(track.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                            if showsArtist {
+                                Text(track.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                            }
                         }
                         Spacer(minLength: 8)
                         Menu {
@@ -130,6 +149,14 @@ struct TrackMenuItems: View {
                     Label(Strings.share, systemImage: "square.and.arrow.up")
                 }
             }
+            if tracks.count == 1, let track = tracks.first {
+                if app.hasAlbums(track.platform) {
+                    Button(Strings.goToAlbum, systemImage: "square.stack") { go(to: .album(of: track)) }
+                }
+                if app.hasArtists(track.platform) {
+                    Button(Strings.goToArtist, systemImage: "music.microphone") { go(to: .artist(of: track)) }
+                }
+            }
             if inPlayer, let track = tracks.first {
                 if player.lyrics.isSynced {
                     Button(Strings.shareLyricsMenu, systemImage: "quote.bubble") { app.lyricShare = LyricShareRequest(track: track) }
@@ -143,6 +170,14 @@ struct TrackMenuItems: View {
                 }
             }
         }
+    }
+}
+
+extension TrackMenuItems {
+    /// Closes the full player and pushes the page on the current tab.
+    private func go(to route: CatalogRoute) {
+        player.showsFullPlayer = false
+        app.open(route)
     }
 }
 

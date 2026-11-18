@@ -124,6 +124,27 @@ public struct MHubClient: Sendable {
         return items.map(\.track)
     }
 
+    /// Songs, albums, artists and playlists in the platform's sections.
+    public func catalogSearch(platform: String, query: String, limit: Int = 20) async throws -> CatalogSearch {
+        try await get("/api/v1/catalog/search", ["platform": platform, "q": query, "limit": String(limit)])
+    }
+
+    public func album(platform: String, id: String) async throws -> AlbumDetail {
+        try await get("/api/v1/albums/\(Self.pathSegment(platform))/\(Self.pathSegment(id))")
+    }
+
+    public func artist(platform: String, id: String) async throws -> ArtistDetail {
+        try await get("/api/v1/artists/\(Self.pathSegment(platform))/\(Self.pathSegment(id))")
+    }
+
+    public func trackInfo(platform: String, id: String) async throws -> TrackInfo {
+        try await get("/api/v1/tracks/\(Self.pathSegment(platform))/\(Self.pathSegment(id))")
+    }
+
+    static func pathSegment(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? value
+    }
+
     public func home(platform: String = "applemusic", limit: Int = 40, refresh: Bool = false,
                      exclude: [String] = []) async throws -> RecommendationHome {
         var query = ["platform": platform, "limit": String(limit)]

@@ -84,6 +84,7 @@ final class AppModel {
     var tab: AppTab = .home
     var homePath = NavigationPath()
     var libraryPath = NavigationPath()
+    var searchPath = NavigationPath()
     /// The player's「歌词与外观」sheet.
     var showsDisplaySettings = false
     /// The panel the full player opens on (the Mac bar's lyrics and queue buttons).
@@ -124,6 +125,20 @@ final class AppModel {
 
     func label(for platform: String) -> String {
         platforms.first { $0.id == platform }?.label ?? PlatformInfo.label(for: platform)
+    }
+
+    /// Album pages exist on this platform (「前往专辑」).
+    func hasAlbums(_ platform: String) -> Bool { platforms.first { $0.id == platform }?.hasAlbums ?? false }
+    /// Artist pages exist on this platform (「前往艺人」).
+    func hasArtists(_ platform: String) -> Bool { platforms.first { $0.id == platform }?.hasArtists ?? false }
+
+    /// Pushes an album, artist or playlist page on the current tab's stack.
+    func open(_ route: some Hashable) {
+        switch tab {
+        case .home: homePath.append(route)
+        case .library: libraryPath.append(route)
+        case .search: searchPath.append(route)
+        }
     }
 
     // MARK: Recently played

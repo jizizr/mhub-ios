@@ -34,6 +34,20 @@ import Testing
 
     @Test func casesLoaded() { #expect(Self.cases.count >= 30) }
 
+    /// A song picked in an album stays first under shuffle; the rest is shuffled behind it.
+    @Test func replaceKeepingTheStartShufflesBehindIt() {
+        let tracks = ["a", "b", "c", "d", "e"].map(Self.track)
+        for _ in 0..<20 {
+            var queue = PlayQueue()
+            queue.replace(with: tracks, startAt: 2, shuffle: true, keepStart: true)
+            #expect(queue.index == 0 && queue.current?.sourceID == "c")
+            #expect(Set(queue.items.map(\.sourceID)) == ["a", "b", "c", "d", "e"])
+        }
+        var ordered = PlayQueue()
+        ordered.replace(with: tracks, startAt: 2, shuffle: false, keepStart: true)
+        #expect(ordered.index == 2 && ordered.items.map(\.sourceID) == ["a", "b", "c", "d", "e"])
+    }
+
     @Test(arguments: cases) func run(_ testCase: Case) throws {
         var queue = PlayQueue(items: testCase.initial.queue.map(Self.track), index: testCase.initial.index,
                               repeatMode: RepeatMode(contract: testCase.initial.repeat ?? "off"),

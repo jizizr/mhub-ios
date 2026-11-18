@@ -187,11 +187,28 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity)
     }
 
+    /// The artist opens their page where the platform has one, as in Apple Music.
+    @ViewBuilder
+    private func artistLine(_ font: Font) -> some View {
+        let text = Text(player.current?.artist ?? "").font(font).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+        if let track = player.current, app.hasArtists(track.platform) {
+            Button {
+                player.showsFullPlayer = false
+                app.open(CatalogRoute.artist(of: track))
+            } label: {
+                text
+            }
+            .buttonStyle(.plain)
+        } else {
+            text
+        }
+    }
+
     private var titleRow: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(player.current?.title ?? Strings.notPlaying).font(.title3.weight(.semibold)).lineLimit(1)
-                Text(player.current?.artist ?? "").font(.title3).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                artistLine(.title3)
             }
             Spacer()
             if let track = player.current {
@@ -219,7 +236,7 @@ struct NowPlayingView: View {
                 .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
             VStack(alignment: .leading, spacing: 2) {
                 Text(player.current?.title ?? "").font(.headline).lineLimit(1)
-                Text(player.current?.artist ?? "").font(.subheadline).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                artistLine(.subheadline)
             }
             Spacer()
             if let track = player.current {

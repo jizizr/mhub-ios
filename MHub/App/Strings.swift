@@ -22,6 +22,19 @@ enum Strings {
     static let searchPrompt = "歌曲、艺人"
     static let searchEmpty = "没有找到相关歌曲"
     static let searchHint = "搜索或选择一首音乐"
+    // Albums and artists
+    static let goToAlbum = "前往专辑"
+    static let goToArtist = "前往艺人"
+    static let topSongs = "热门歌曲"
+    static let albums = "专辑"
+    static let singlesAndEPs = "单曲与 EP"
+    static let songs = "歌曲"
+    static let addToLibrary = "添加到资料库"
+    static let pageLoadFailed = "暂时无法打开"
+    static let noAlbumFound = "没有找到这首歌所在的专辑"
+    static let noArtistFound = "没有找到这首歌的艺人页"
+    static func disc(_ number: Int) -> String { "碟 \(number)" }
+    static func savedToLibrary(_ name: String, _ count: Int) -> String { "已添加“\(name)”，共 \(count) 首" }
     // Library
     static let playlists = "歌单"
     static let localCache = "本地缓存"
@@ -163,6 +176,8 @@ enum Strings {
     static func queueCount(_ count: Int) -> String { "\(count) 首音乐" }
     static func sourcePlaylist(_ name: String) -> String { "来自歌单：\(name)" }
     static func sourceRecommendation(_ name: String) -> String { "来自推荐：\(name)" }
+    static func sourceAlbum(_ name: String) -> String { "来自专辑：\(name)" }
+    static func sourceArtist(_ name: String) -> String { "来自艺人：\(name)" }
     static let clearQueueConfirm = "清空当前播放队列？正在播放的歌曲也会停止。"
     static let clear = "清空"
     static let autoplayLoadingNotice = "正在挑选接下来听的歌曲…"
