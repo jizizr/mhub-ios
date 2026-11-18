@@ -50,8 +50,15 @@ jobs:
       - name: Package Mac app
         run: |
           cd build
-          ditto -c -k --keepParent MHub-mac.xcarchive/Products/Applications/MHub.app "MHub-$VERSION-mac.zip"
-          shasum -a 256 "MHub-$VERSION-mac.zip" | tee "MHub-$VERSION-mac.zip.sha256"
+          app=MHub-mac.xcarchive/Products/Applications/MHub.app
+          # A disk image with MHub and a link to Applications to drag it onto.
+          mkdir dmg
+          cp -R "$app" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "MHub $VERSION" -srcfolder dmg -fs HFS+ -format UDZO -ov "MHub-$VERSION-mac.dmg"
+          shasum -a 256 "MHub-$VERSION-mac.dmg" | tee "MHub-$VERSION-mac.dmg.sha256"
+          # The zip stays for Mac apps up to 0.1.0-beta.9, whose update check looks for it.
+          ditto -c -k --keepParent "$app" "MHub-$VERSION-mac.zip"
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,11 +72,11 @@ jobs:
 
           **未签名 IPA**：用 AltStore、SideStore、Sideloadly 或 TrollStore 以你自己的 Apple ID 签名后安装。免费 Apple ID 签名 7 天后需重新签名。
 
-          **Mac 版**（\`-mac.zip\`，需 macOS 13 或更新，Intel 与 Apple 芯片通用）：解压后把 MHub 拖进「应用程序」。未经 Apple 公证，首次打开若提示「已损坏」或「无法验证开发者」，在终端运行 \`xattr -dr com.apple.quarantine /Applications/MHub.app\` 后再打开。
+          **Mac 版**（\`-mac.dmg\`，需 macOS 13 或更新，Intel 与 Apple 芯片通用）：打开后把 MHub 拖进「应用程序」。\`-mac.zip\` 内容相同，供 0.1.0-beta.9 及更早的 Mac 版自动更新使用。未经 Apple 公证，首次打开若提示「已损坏」或「无法验证开发者」，在终端运行 \`xattr -dr com.apple.quarantine /Applications/MHub.app\` 后再打开。
 
           App 会自动检查新版本（设置 › 关于）。
           NOTES
           gh release create "$GITHUB_REF_NAME" $prerelease --verify-tag \
             --title "MHub $VERSION" --notes-file build/notes.md \
             "build/MHub-$VERSION-unsigned.ipa" "build/MHub-$VERSION-unsigned.ipa.sha256" \
-            "build/MHub-$VERSION-mac.zip" "build/MHub-$VERSION-mac.zip.sha256"
+            "build/MHub-$VERSION-mac.dmg" "build/MHub-$VERSION-mac.dmg.sha256" "build/MHub-$VERSION-mac.zip"

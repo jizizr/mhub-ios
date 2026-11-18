@@ -2,9 +2,11 @@
 
 [MHub](https://github.com/jizizr/mhub) 的 iOS 客户端（SwiftUI，iOS／iPadOS 16+；iOS 26 起使用液态玻璃）。连接自托管的 MHub 服务端，操作逻辑与网页版一致，界面使用液态玻璃、底栏附件迷你播放器、缩放转场等系统特性，参照 Apple Music 的设计语言。Android 版见 [mhub-android](https://github.com/jizizr/mhub-android)。
 
-## 安装 Beta
+## 安装
 
 在 [Releases](https://github.com/jizizr/mhub-ios/releases) 下载 `MHub-<版本>-unsigned.ipa`，用 AltStore、SideStore、Sideloadly 或 TrollStore 以自己的 Apple ID 签名安装。首次启动填写服务端地址。
+
+Mac 版（macOS 13+，Intel 与 Apple 芯片通用）：下载 `MHub-<版本>-mac.dmg`，打开后把 MHub 拖进「应用程序」。未经 Apple 公证，首次打开前在终端运行 `xattr -dr com.apple.quarantine /Applications/MHub.app`。
 
 ## 目录
 
@@ -32,7 +34,7 @@ xcodebuild -project MHub.xcodeproj -scheme MHub -destination 'generic/platform=i
 
 ## 发布
 
-推送 `v*` 标签（如 `v0.1.0-beta.2`）触发 `release.yml`：跑单测、无签名归档、打包 IPA 并创建 GitHub Release（带后缀的标签为预发布）。
+推送 `v*` 标签（如 `v0.1.0`、`v0.1.1-beta.1`）触发 `release.yml`：跑单测、无签名归档、打包 IPA 与 Mac 版 DMG 并创建 GitHub Release（带后缀的标签为预发布）。
 
 ## 与 Android 保持一致
 

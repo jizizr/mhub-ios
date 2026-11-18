@@ -44,9 +44,9 @@ final class UpdateManager {
         }
     }
 
-    /// The release asset this platform installs: the Mac zip or the iOS IPA.
+    /// The release asset this platform installs: the Mac disk image or the iOS IPA.
     #if targetEnvironment(macCatalyst)
-    private static let assetSuffix = "-mac.zip"
+    private static let assetSuffix = "-mac.dmg"
     #else
     private static let assetSuffix = ".ipa"
     #endif
